@@ -1,0 +1,25 @@
+{
+  "name": "@tinkermonkey/code-wrapper",
+  "version": "0.1.0",
+  "description": "Reusable Node.js module for AI coding agent CLIs — process launch, event normalization, session management",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./process": "./src/process/index.ts",
+    "./events": "./src/events/index.ts",
+    "./sessions": "./src/sessions/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["claude-code", "github-copilot", "ai", "cli", "wrapper", "sessions"],
+  "author": "tinkermonkey",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
