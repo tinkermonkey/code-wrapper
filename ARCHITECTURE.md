@@ -11,7 +11,7 @@ The module is split into three layers, each independently importable:
 ```
 src/
   process/          # CliProcess — subprocess lifecycle
-    types.ts          ProcessOptions
+    types.ts          ProcessOptions, CliBackend
     CliProcess.ts     spawn, watchdog, teardown
     index.ts          barrel
 
@@ -78,6 +78,11 @@ The calling application wires all three together. The module imposes no threadin
        caller routes:   WebSocket / Redis / SSE / in-process queue
 ```
 
+> **External kill**: If the caller invokes `proc.kill()` directly, `killedBy` is never set,
+> so none of the timeout error branches fire. The generator terminates after the readline
+> `'close'` event with no final `ErrorEvent`. The caller is responsible for noting the
+> cancellation in its own state.
+
 ---
 
 ## Key interfaces
@@ -85,24 +90,27 @@ The calling application wires all three together. The module imposes no threadin
 ### ProcessOptions
 
 ```typescript
+type CliBackend = 'claude' | 'copilot';
+
 interface ProcessOptions {
   cwd: string;               // working directory for the CLI
   prompt: string;            // delivered via stdin
-  agent?: string;            // --agent <name>
-  skipPermissions?: boolean; // --dangerously-skip-permissions (default true)
+  agent?: string;            // --agent <name>  (prepended before all other flags)
+  skipPermissions?: boolean; // --dangerously-skip-permissions (default false)
   mcpConfigPath?: string;    // --mcp-config <path>
 
   // Session continuity
-  sessionId?: string;        // present when resuming
+  sessionId?: string;        // present when resuming; omit for a brand-new session
   isFirstMessage?: boolean;  // true  → --session-id <id>  (start traceable session)
                              // false → --resume <id>       (continue it)
+                             // default: true
   // Timeouts (seconds)
   idleTimeout?: number;      // stdout silence ceiling  (default 300)
   maxTimeout?: number;       // hard wall-clock ceiling (default 3600)
 }
 ```
 
-`--session-id` and `--resume` are distinct flags. `--session-id` names a session the CLI creates fresh; `--resume` continues an existing one. The `isFirstMessage` boolean controls which flag is passed.
+`--session-id` and `--resume` are distinct CLI flags. `--session-id` starts a fresh session with a caller-supplied traceable ID. `--resume` continues an existing session. The `isFirstMessage` boolean controls which flag is passed. When `sessionId` is `undefined` (e.g. the very first turn), neither flag is passed — the CLI starts an anonymous session and returns the assigned ID in the `result` event.
 
 ### ClaudeEvent union
 
@@ -117,22 +125,28 @@ interface BaseEvent {
 
 type ClaudeEvent =
   | TextEvent        // { type: 'text';        text: string }
-  | ToolUseEvent     // { type: 'tool_use';    id: string; name: string; input: unknown }
-  | ToolResultEvent  // { type: 'tool_result'; toolUseId: string; content: unknown; isError: boolean }
-  | ProgressEvent    // { type: 'progress';    message: string }
+  | ToolUseEvent     // { type: 'tool_use';    id: string; name: string; inputSummary: string }
+  | ToolResultEvent  // { type: 'tool_result'; toolUseId: string; isError: boolean; output: string }
+  | ProgressEvent    // { type: 'progress';    elapsed: number }  — defined; not yet emitted
   | DoneEvent        // { type: 'done';        sessionId: string; usage?: Usage }
   | ErrorEvent       // { type: 'error';       code: ErrorCode; detail: string; exitCode?: number }
 ```
+
+**Truncation policy**: `ToolUseEvent.inputSummary` holds the first 200 characters of the
+JSON-stringified tool input. `ToolResultEvent.output` holds the first 500 characters of
+combined text content. This caps event size for high-throughput sinks (Redis, WebSocket)
+where the full payloads would be expensive. Callers that need the full content must
+read it from the source (tool input) or the tool's own output channel.
 
 ```typescript
 type ErrorCode =
   | 'idle_timeout'    // stdout silence exceeded idleTimeout
   | 'max_timeout'     // wall-clock ceiling exceeded
-  | 'nonzero_exit'    // process exited with non-zero code (other than the above)
+  | 'nonzero_exit'    // process exited with non-zero code (not covered above)
   | 'rate_limit'      // stderr contained a rate-limit reset message
   | 'stale_session'   // stderr: "No conversation found with session ID"
   | 'spawn_error'     // process could not be started at all
-  | 'parse_error'     // a line could not be parsed (surfaced as TextEvent, not ErrorEvent)
+  | 'parse_error'     // reserved; not yet emitted (see Known gaps)
 ```
 
 ### Raw stream-json → ClaudeEvent mapping
@@ -141,11 +155,12 @@ type ErrorCode =
 |---|---|---|
 | `assistant` | `message.content[].type === 'text'` → `.text` | `TextEvent` per text block |
 | `assistant` | `message.content[].type === 'tool_use'` | `ToolUseEvent` per tool-use block |
-| `tool_result` | `tool_use_id`, `content`, `is_error` | `ToolResultEvent` |
-| `result` | `session_id`, `usage.*` | `DoneEvent` (also signals watchdog to disarm) |
+| `tool_result` | `tool_use_id`, `content[].text`, `is_error` | `ToolResultEvent` |
+| `result` | `session_id`, `usage.input_tokens`, `usage.output_tokens` | `DoneEvent` (also signals watchdog to disarm) |
 | `user` | *(input echo)* | dropped |
 | `system` | *(CLI bookkeeping)* | dropped |
-| non-JSON line | raw text | `TextEvent` (nothing is silently dropped) |
+| `error` / `error_detail` / `error_event` | *(CLI error events)* | dropped — see Known gaps |
+| non-JSON line | raw text | `TextEvent` (nothing silently dropped) |
 | stderr at exit | rate-limit or stale-session keywords | `ErrorEvent` |
 
 ### Session
@@ -183,9 +198,9 @@ class SessionManager {
 ```typescript
 interface ISessionStore {
   get(key: string): Session | undefined;
-  set(key: string, session: Session): void;
+  set(session: Session): void;    // key is session.key — not a separate parameter
   delete(key: string): void;
-  list(): Session[];
+  all(): Session[];               // sorted by lastActiveAt descending
 }
 ```
 
@@ -197,27 +212,32 @@ Two implementations ship: `MemoryStore` (Map-backed) and `FileStore` (atomic JSO
 
 ### CLI flag construction
 
+The actual argument order produced by `buildArgs`:
+
 ```
+[--agent <name>]               ← prepended first if set (unshift)
 claude
   --print
   --verbose
   --output-format stream-json
-  [--dangerously-skip-permissions]   # if skipPermissions === true (default)
-  [--agent <name>]                   # if options.agent is set
+  [--dangerously-skip-permissions]   # if skipPermissions === true (not the default)
   [--mcp-config <path>]              # if options.mcpConfigPath is set
-  [--session-id <id>]                # first message with a known session key
+  [--session-id <id>]                # first message with a non-undefined sessionId
   [--resume <id>]                    # subsequent messages
   -                                  # read prompt from stdin
 ```
+
+Note: `--dangerously-skip-permissions` is opt-in (`skipPermissions` defaults to `false`).
+Note: `--agent` is added via `args.unshift` so it is always the first argument.
 
 ### CLAUDECODE environment deletion
 
 The `CLAUDECODE` environment variable is set by Claude Code when it runs. A subprocess spawned inside an existing Claude Code session will refuse to start if this variable is present. `CliProcess` deletes it from the child's environment before spawning:
 
 ```typescript
-const env = { ...process.env };
+const env: NodeJS.ProcessEnv = { ...process.env };
 delete env['CLAUDECODE'];
-spawn(bin, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+spawn(bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env });
 ```
 
 This is required for DR CLI (which runs inside a Claude Code session as a tool) and for phone-home (which runs inside the control-plane container). Switchyard runs Claude inside Docker containers where this is not an issue — but deleting the variable costs nothing.
@@ -231,18 +251,33 @@ A `setInterval` ticks every 5 seconds and tracks two deadlines:
 
 Killing the process closes its stdout pipe, which fires the readline `'close'` event, which terminates the generator loop naturally. No manual generator.return() call is needed.
 
+After readline closes, the implementation checks stderr for well-known patterns:
+1. Stale session (`STALE_SESSION_RE`) → `ErrorEvent { code: 'stale_session' }` (takes precedence)
+2. Rate limit (`RATE_LIMIT_RE`) → `ErrorEvent { code: 'rate_limit' }` (takes precedence)
+3. Watchdog kill → timeout error event
+4. Non-zero exit with none of the above → `ErrorEvent { code: 'nonzero_exit' }` is **not** currently emitted; the generator ends cleanly
+
 ### Stale session recovery
 
 The module surfaces stale sessions as `ErrorEvent { code: 'stale_session' }`. Recovery policy belongs to the caller:
 
 ```typescript
-for await (const event of proc.run(opts)) {
-  if (event.type === 'error' && event.code === 'stale_session') {
-    sessions.clearSession(key);           // drop the bad ID
-    yield* proc.run({ ...opts, sessionId: undefined, isFirstMessage: true }); // fresh start
-    return;
+// Must be inside an async generator function to use yield*
+async function* runWithRecovery(
+  proc: CliProcess,
+  sessions: SessionManager,
+  key: string,
+  opts: ProcessOptions,
+): AsyncGenerator<ClaudeEvent> {
+  for await (const event of proc.run(opts)) {
+    if (event.type === 'error' && event.code === 'stale_session') {
+      sessions.clearSession(key);           // drop the bad ID
+      // Retry with no sessionId — CLI will start a fresh session
+      yield* proc.run({ ...opts, sessionId: undefined, isFirstMessage: true });
+      return;
+    }
+    yield event;
   }
-  // … normal routing
 }
 ```
 
@@ -260,7 +295,7 @@ DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel
 |---|---|
 | Spawning `claude --print --verbose --output-format stream-json` | `CliProcess.run(ProcessOptions)` |
 | `CLAUDECODE` env deletion for nested execution | built into `CliProcess` |
-| `--dangerously-skip-permissions` flag | `ProcessOptions.skipPermissions` (default true) |
+| `--dangerously-skip-permissions` flag | `ProcessOptions.skipPermissions` (pass `true` explicitly; default is `false`) |
 | `--agent <name>` for skill invocation | `ProcessOptions.agent` |
 | `--mcp-config <path>` | `ProcessOptions.mcpConfigPath` |
 | `--session-id` (first message) vs `--resume` (resume) | `ProcessOptions.sessionId` + `isFirstMessage` |
@@ -278,12 +313,12 @@ DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel
 | DR CLI concern | Why it stays in DR CLI |
 |---|---|
 | `BaseChatClient` polymorphism (Claude Code + Copilot) | `CliProcess` handles one backend per instance; DR wraps it in a common interface keyed by backend type |
+| Copilot backend | `CliProcess('copilot')` is defined but not yet implemented — throws on invocation; reserved for v2 |
 | Hono + OpenAPI HTTP server | Framework and route handling are application concerns |
 | OpenTelemetry tracing and metrics | Observability is the app's responsibility; code-wrapper emits no spans |
 | `ChatLogger` (durable local log file) | Routing events to a log file is the caller's concern — the module is destination-agnostic |
 | SSE / WebSocket response streaming | Event routing is the app's concern |
 | Session key scoping (by route, by user, by call) | The app decides what a "key" is — code-wrapper just stores it |
-| Copilot session semantics | Copilot session IDs and flags differ from Claude Code; `CliProcess` supports a `backend` parameter but Copilot session continuity is owned by the DR client layer |
 
 ### Integration sketch
 
@@ -295,16 +330,21 @@ const sessions = new SessionManager({ persistPath: './sessions.json' });
 
 // First call for a user
 const session = sessions.newSession(callerId);
+// On a brand-new session, cliSessionId is undefined.
+// buildArgs skips both --session-id and --resume when sessionId is undefined.
 const opts = {
   cwd: projectDir,
   prompt: userMessage,
-  sessionId: session.cliSessionId,
-  isFirstMessage: session.isFirst,
+  sessionId: session.cliSessionId,   // undefined → no session flag on first turn
+  isFirstMessage: session.isFirst,   // true
 };
 
 for await (const event of proc.run(opts)) {
   if (event.type === 'text') sseStream.write(event.text);
-  if (event.type === 'done') sessions.recordCliSessionId(callerId, event.sessionId);
+  if (event.type === 'done') {
+    // Store the CLI-assigned ID so the next turn uses --resume
+    sessions.recordCliSessionId(callerId, event.sessionId);
+  }
   if (event.type === 'error' && event.code === 'stale_session') {
     sessions.clearSession(callerId);
     // retry with fresh session
@@ -353,13 +393,13 @@ The conceptual patterns are identical even though the language and indirection d
 | `subprocess.Popen` + `stdout=PIPE` | `CliProcess` spawn + readline | Direct vs Docker-tailed, but same line-by-line approach |
 | `json.loads(line)` per line | `EventParser.parseCliLine()` | Same parsing logic |
 | `stream_callback(event)` observer | `AsyncGenerator<ClaudeEvent>` | Pull vs push, same destination-agnostic principle |
-| `--resume <session_id>` flag | `ProcessOptions.sessionId` + `isFirstMessage: false` | Switchyard only uses `--resume`; code-wrapper adds `--session-id` for first messages |
+| `--resume <session_id>` flag | `ProcessOptions.sessionId` + `isFirstMessage: false` | Switchyard only uses `--resume`; code-wrapper adds `--session-id` for traceable first messages |
 | Two-phase cleanup (wait 30s → kill container) | Watchdog SIGTERM → 3s → SIGKILL | Same intent: graceful then forceful |
 | `result` event detection for done signal | `DoneEvent` from EventParser | Identical raw event type |
-| Error type detection (`error`, `error_detail`, `error_event`) | `ErrorEvent` with `code` | Normalized; Switchyard checks raw `type` string |
+| Error type detection (`error`, `error_detail`, `error_event`) | Currently silently dropped (see Known gaps) | Switchyard checks raw `type` string; code-wrapper needs this for parity |
 | Rate-limit detection | `ErrorEvent { code: 'rate_limit' }` | Switchyard uses a circuit breaker on top; code-wrapper surfaces the event |
 | `session_id` from `result` event | `DoneEvent.sessionId` | Same field, same timing |
-| `usage.*` from events | `DoneEvent.usage` | code-wrapper aggregates; Switchyard reads per-event |
+| `usage.*` from `result` event | `DoneEvent.usage` | code-wrapper extracts from the terminal `result` event; Switchyard also reads per raw event |
 
 ### What code-wrapper does NOT cover (stays in Switchyard)
 
@@ -421,3 +461,19 @@ These are explicitly out of scope for all callers:
 | Docker / container management | Infrastructure below or above the CLI invocation layer |
 | HTTP server, routes, auth | Application layer |
 | Telemetry (OTel, Elastic, Prometheus) | Application observability layer |
+
+---
+
+## Known implementation gaps
+
+These are gaps between the current implementation and what a complete solution would include.
+Each is intentionally deferred, not forgotten.
+
+| Gap | Description | Priority |
+|---|---|---|
+| `error`/`error_detail`/`error_event` raw types | Inline CLI error events are silently dropped by EventParser. They should be surfaced as `ErrorEvent { code: 'nonzero_exit', detail: event.message }` or a new code. | High |
+| Cache token fields in `DoneEvent.usage` | The CLI's `result` event includes `cache_read_input_tokens` and `cache_creation_input_tokens`. EventParser drops them; `DoneEvent.usage` should be extended to include `cacheReadInputTokens` and `cacheCreationInputTokens`. | Medium |
+| `parse_error` ErrorCode | Defined in `ErrorCode` but never emitted. Intended for lines that begin with `{` but are not valid JSON (as distinct from plaintext lines, which become `TextEvent`). Not emitted until the parser is updated. | Low |
+| `ProgressEvent` not emitted | Defined in `types.ts` with `elapsed: number` (seconds since process start). Intended for periodic watchdog heartbeats to help callers track slow-running tasks. Not yet emitted by `CliProcess`. | Low |
+| `nonzero_exit` not emitted | `ErrorCode` defines `nonzero_exit` but `CliProcess` does not currently check the process exit code and emit this event. A non-zero exit with no matching stderr pattern ends the generator silently. | Medium |
+| Copilot backend | `CliProcess('copilot')` is declared but throws on use. Reserved for v2. | Future |
