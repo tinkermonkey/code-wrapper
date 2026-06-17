@@ -6,7 +6,7 @@ export type ClaudeEventType =
   | 'done'
   | 'error';
 
-interface BaseEvent {
+export interface BaseEvent {
   /** Monotonic across all events in a run — safe for replay and deduplication */
   seq: number;
   timestamp: number;

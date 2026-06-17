@@ -1,115 +1,103 @@
-# code-wrapper
+# @tinkermonkey/code-wrapper
 
-Reusable Node.js / TypeScript module for apps that drive AI coding agent CLIs (Claude Code, GitHub Copilot). Handles three concerns that every such app reinvents:
+Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the three universal concerns:
 
-1. **Process launch** — spawn the CLI in a working directory with the right flags, deliver the prompt via stdin, enforce idle and max timeouts
-2. **Event normalization** — parse `--output-format stream-json` output into a typed, sequenced event stream; the caller routes events wherever it needs (WebSocket, Redis, SSE, in-process queue)
-3. **Session management** — track conversation continuity across turns; persist session IDs to JSON so sessions survive restarts
+1. **Process launch** — spawn `claude` or `gh copilot`, deliver prompt via stdin, enforce idle and max timeouts, tear down cleanly
+2. **Event normalization** — parse `--output-format stream-json` output into a typed `ClaudeEvent` stream with a monotonic `seq` on every event
+3. **Session management** — track CLI session IDs across turns, persist them to disk, detect and recover from stale sessions
+
+## Requirements
+
+- Node.js ≥ 20
+- `claude` CLI in PATH (or `gh` for Copilot, once implemented)
 
 ## Install
 
-```bash
+```sh
+# From npm (once published)
 npm install @tinkermonkey/code-wrapper
+
+# From GitHub
+npm install github:tinkermonkey/code-wrapper
 ```
 
-Requires Node.js ≥ 20 and `claude` (Claude Code) or `gh` (GitHub Copilot CLI) in your PATH.
+## Build
+
+```sh
+npm run build        # compile TypeScript → dist/
+npm run typecheck    # type-check without emitting
+```
+
+The `prepare` script runs `build` automatically on `npm install` from a git URL.
 
 ## Quick start
 
 ```typescript
 import { CliProcess, SessionManager } from '@tinkermonkey/code-wrapper';
 
-const process = new CliProcess('claude');
-const sessions = new SessionManager({ persistPath: './.sessions.json' });
+const proc = new CliProcess('claude');
+const sessions = new SessionManager({ persistPath: './sessions.json' });
 
-// --- First turn ---
-const session = sessions.newSession('user-123');
+// Start or resume a conversation keyed by any app-defined string
+const session = sessions.resumeSession(callerId) ?? sessions.newSession(callerId);
 
-for await (const event of process.run({
+for await (const event of proc.run({
   cwd: '/path/to/project',
-  prompt: 'Summarise the architecture of this repo',
+  prompt: userMessage,
   skipPermissions: true,
-  sessionId: session.cliSessionId,
-  isFirstMessage: session.isFirst,
+  sessionId: session.cliSessionId,   // undefined on first turn — no session flag passed
+  isFirstMessage: session.isFirst,   // true → --session-id; false → --resume
 })) {
-  if (event.type === 'text') {
-    process.stdout.write(event.text);
-  }
-  if (event.type === 'done') {
-    // Store the CLI-assigned session ID so the next turn uses --resume
-    sessions.recordCliSessionId('user-123', event.sessionId);
-  }
-  if (event.type === 'error') {
-    if (event.code === 'stale_session') {
-      // CLI lost the session — clear it and retry
-      sessions.clearSession('user-123');
-    }
-    console.error(event.code, event.detail);
-  }
-}
-
-// --- Second turn (same conversation) ---
-const existing = sessions.resumeSession('user-123');
-if (existing) {
-  for await (const event of process.run({
-    cwd: '/path/to/project',
-    prompt: 'Now focus on the auth layer',
-    skipPermissions: true,
-    sessionId: existing.cliSessionId,
-    isFirstMessage: existing.isFirst,  // false — uses --resume
-  })) {
-    // handle events...
+  switch (event.type) {
+    case 'text':        process.stdout.write(event.text); break;
+    case 'tool_use':    console.log('Tool:', event.name, event.input); break;
+    case 'tool_result': console.log('Result:', event.output); break;
+    case 'done':
+      sessions.recordCliSessionId(callerId, event.sessionId);
+      console.log('Tokens:', event.usage);
+      break;
+    case 'error':
+      if (event.code === 'stale_session') sessions.clearSession(callerId);
+      console.error(event.code, event.detail);
+      break;
   }
 }
 ```
 
+## Module paths
+
+| Import | Exports |
+|---|---|
+| `@tinkermonkey/code-wrapper` | Everything below, re-exported |
+| `@tinkermonkey/code-wrapper/process` | `CliProcess`, `ProcessOptions`, `CliBackend` |
+| `@tinkermonkey/code-wrapper/events` | `parseCliLine`, `ClaudeEvent` union + all event types |
+| `@tinkermonkey/code-wrapper/sessions` | `SessionManager`, `createSessionStore`, `Session` |
+
 ## Event types
 
-| `type` | Fields | When |
-|---|---|---|
-| `text` | `text` | Assistant prose chunk |
-| `tool_use` | `id`, `name`, `inputSummary` | Claude called a tool |
-| `tool_result` | `toolUseId`, `isError`, `output` | Tool returned |
-| `done` | `sessionId`, `usage?` | Process exited cleanly |
-| `error` | `code`, `detail`, `exitCode?` | See error codes below |
+| Type | Key fields |
+|---|---|
+| `text` | `text: string` |
+| `tool_use` | `id`, `name`, `input: unknown` |
+| `tool_result` | `toolUseId`, `isError`, `output: string` |
+| `done` | `sessionId`, `usage?: { inputTokens, outputTokens }` |
+| `error` | `code: ErrorCode`, `detail: string` |
+| `progress` | `elapsed: number` — defined; not yet emitted |
 
-Error codes: `idle_timeout` · `max_timeout` · `nonzero_exit` · `rate_limit` · `stale_session` · `spawn_error` · `parse_error`
-
-Every event carries `seq` (monotonic, safe for replay/dedup) and `timestamp`.
+All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 
 ## ProcessOptions
 
-| Option | Default | Description |
+| Field | Default | Description |
 |---|---|---|
-| `cwd` | required | Working directory for the CLI subprocess |
+| `cwd` | required | Working directory for the CLI |
 | `prompt` | required | Delivered via stdin |
-| `agent` | — | Agent/skill name (e.g. `dr-architect`) |
-| `skipPermissions` | `false` | Adds `--dangerously-skip-permissions` |
-| `mcpConfigPath` | — | Path to MCP config JSON (`--mcp-config`) |
+| `skipPermissions` | `false` | Pass `--dangerously-skip-permissions` |
+| `agent` | — | `--agent <name>` (prepended first) |
+| `mcpConfigPath` | — | `--mcp-config <path>` |
 | `sessionId` | — | CLI session ID for continuity |
 | `isFirstMessage` | `true` | `true` → `--session-id`; `false` → `--resume` |
 | `idleTimeout` | `300` | Seconds of stdout silence before kill |
 | `maxTimeout` | `3600` | Hard ceiling in seconds |
 
-## Session helpers
-
-```typescript
-const sessions = new SessionManager({ persistPath: './.sessions.json' });
-
-sessions.newSession(key)            // start fresh, overwrites existing
-sessions.resumeSession(key)         // look up existing → undefined if none
-sessions.listSessions()             // all sessions, newest first
-sessions.recordCliSessionId(key, id) // call after each done event
-sessions.touch(key)                 // update lastActiveAt
-sessions.clearSession(key)          // remove (e.g. after stale_session error)
-```
-
-Omit `persistPath` to keep sessions in memory only.
-
-## Source material
-
-This module distils patterns from four existing projects:
-- **phone-home** — two-tier timeout, stale-session retry, durable fan-out stream
-- **switchyard** — robust output capture, pluggable observer
-- **documentation_robotics CLI** — `BaseChatClient` abstraction, OTel, `--session-id` vs `--resume` distinction
-- **pai / claude_investigation** — file-watcher JSONL sink, WebSocket snapshot-then-tail
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for full design details, interface specs, and use-case mapping.

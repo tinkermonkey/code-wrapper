@@ -3,14 +3,30 @@
   "version": "0.1.0",
   "description": "Reusable Node.js module for AI coding agent CLIs — process launch, event normalization, session management",
   "type": "module",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./process": "./src/process/index.ts",
-    "./events": "./src/events/index.ts",
-    "./sessions": "./src/sessions/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./process": {
+      "types": "./dist/process/index.d.ts",
+      "import": "./dist/process/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/index.d.ts",
+      "import": "./dist/events/index.js"
+    },
+    "./sessions": {
+      "types": "./dist/sessions/index.d.ts",
+      "import": "./dist/sessions/index.js"
+    }
   },
+  "files": ["dist", "src", "ARCHITECTURE.md"],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build"
   },
   "keywords": ["claude-code", "github-copilot", "ai", "cli", "wrapper", "sessions"],
   "author": "tinkermonkey",

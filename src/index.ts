@@ -7,6 +7,7 @@ export { parseCliLine } from './events/EventParser.js';
 export type {
   ClaudeEvent,
   ClaudeEventType,
+  BaseEvent,
   TextEvent,
   ToolUseEvent,
   ToolResultEvent,
