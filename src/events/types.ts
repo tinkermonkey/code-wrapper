@@ -22,15 +22,15 @@ export interface ToolUseEvent extends BaseEvent {
   type: 'tool_use';
   id: string;
   name: string;
-  /** First 200 chars of JSON-stringified input */
-  inputSummary: string;
+  /** Full tool input as received from the CLI */
+  input: unknown;
 }
 
 export interface ToolResultEvent extends BaseEvent {
   type: 'tool_result';
   toolUseId: string;
   isError: boolean;
-  /** First 500 chars of combined text output */
+  /** Full combined text output from the tool result content blocks */
   output: string;
 }
 

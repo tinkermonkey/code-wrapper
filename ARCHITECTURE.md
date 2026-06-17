@@ -125,18 +125,17 @@ interface BaseEvent {
 
 type ClaudeEvent =
   | TextEvent        // { type: 'text';        text: string }
-  | ToolUseEvent     // { type: 'tool_use';    id: string; name: string; inputSummary: string }
+  | ToolUseEvent     // { type: 'tool_use';    id: string; name: string; input: unknown }
   | ToolResultEvent  // { type: 'tool_result'; toolUseId: string; isError: boolean; output: string }
   | ProgressEvent    // { type: 'progress';    elapsed: number }  — defined; not yet emitted
   | DoneEvent        // { type: 'done';        sessionId: string; usage?: Usage }
   | ErrorEvent       // { type: 'error';       code: ErrorCode; detail: string; exitCode?: number }
 ```
 
-**Truncation policy**: `ToolUseEvent.inputSummary` holds the first 200 characters of the
-JSON-stringified tool input. `ToolResultEvent.output` holds the first 500 characters of
-combined text content. This caps event size for high-throughput sinks (Redis, WebSocket)
-where the full payloads would be expensive. Callers that need the full content must
-read it from the source (tool input) or the tool's own output channel.
+`ToolUseEvent.input` is the raw tool input object as received from the CLI (type `unknown` —
+the shape is tool-specific). `ToolResultEvent.output` is the full combined text from all
+content blocks in the result. Both are unsized — callers that sink to size-constrained
+destinations (e.g. Redis) are responsible for their own truncation or filtering.
 
 ```typescript
 type ErrorCode =
@@ -200,7 +199,7 @@ interface ISessionStore {
   get(key: string): Session | undefined;
   set(session: Session): void;    // key is session.key — not a separate parameter
   delete(key: string): void;
-  all(): Session[];               // sorted by lastActiveAt descending
+  all(): Session[];               // sorted by lastActiveActive descending
 }
 ```
 
@@ -255,7 +254,7 @@ After readline closes, the implementation checks stderr for well-known patterns:
 1. Stale session (`STALE_SESSION_RE`) → `ErrorEvent { code: 'stale_session' }` (takes precedence)
 2. Rate limit (`RATE_LIMIT_RE`) → `ErrorEvent { code: 'rate_limit' }` (takes precedence)
 3. Watchdog kill → timeout error event
-4. Non-zero exit with none of the above → `ErrorEvent { code: 'nonzero_exit' }` is **not** currently emitted; the generator ends cleanly
+4. Non-zero exit with none of the above → generator ends cleanly (see Known gaps)
 
 ### Stale session recovery
 
@@ -471,9 +470,9 @@ Each is intentionally deferred, not forgotten.
 
 | Gap | Description | Priority |
 |---|---|---|
-| `error`/`error_detail`/`error_event` raw types | Inline CLI error events are silently dropped by EventParser. They should be surfaced as `ErrorEvent { code: 'nonzero_exit', detail: event.message }` or a new code. | High |
+| `error`/`error_detail`/`error_event` raw types | Inline CLI error events are silently dropped by EventParser. They should be surfaced as `ErrorEvent`. | High |
 | Cache token fields in `DoneEvent.usage` | The CLI's `result` event includes `cache_read_input_tokens` and `cache_creation_input_tokens`. EventParser drops them; `DoneEvent.usage` should be extended to include `cacheReadInputTokens` and `cacheCreationInputTokens`. | Medium |
-| `parse_error` ErrorCode | Defined in `ErrorCode` but never emitted. Intended for lines that begin with `{` but are not valid JSON (as distinct from plaintext lines, which become `TextEvent`). Not emitted until the parser is updated. | Low |
-| `ProgressEvent` not emitted | Defined in `types.ts` with `elapsed: number` (seconds since process start). Intended for periodic watchdog heartbeats to help callers track slow-running tasks. Not yet emitted by `CliProcess`. | Low |
-| `nonzero_exit` not emitted | `ErrorCode` defines `nonzero_exit` but `CliProcess` does not currently check the process exit code and emit this event. A non-zero exit with no matching stderr pattern ends the generator silently. | Medium |
+| `parse_error` ErrorCode | Defined in `ErrorCode` but never emitted. Intended for lines that begin with `{` but are not valid JSON (as distinct from plaintext lines, which become `TextEvent`). | Low |
+| `ProgressEvent` not emitted | Defined in `types.ts` with `elapsed: number` (seconds since process start). Intended for periodic watchdog heartbeats. Not yet emitted by `CliProcess`. | Low |
+| `nonzero_exit` not emitted | `ErrorCode` defines `nonzero_exit` but `CliProcess` does not check the exit code and emit this event. A non-zero exit with no matching stderr pattern ends the generator silently. | Medium |
 | Copilot backend | `CliProcess('copilot')` is declared but throws on use. Reserved for v2. | Future |

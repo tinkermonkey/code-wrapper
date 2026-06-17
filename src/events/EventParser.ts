@@ -69,7 +69,7 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
           type: 'tool_use',
           id: block.id,
           name: block.name,
-          inputSummary: JSON.stringify(block.input ?? {}).slice(0, 200),
+          input: block.input ?? {},
         } satisfies ToolUseEvent);
       }
     }
@@ -84,7 +84,7 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
       type: 'tool_result',
       toolUseId: raw.tool_use_id ?? '',
       isError: raw.is_error ?? false,
-      output: output.slice(0, 500),
+      output,
     } satisfies ToolResultEvent);
   } else if (raw.type === 'result') {
     events.push({
