@@ -44,17 +44,23 @@ export interface DoneEvent extends BaseEvent {
   type: 'done';
   /** CLI-assigned session ID — store this and pass as sessionId on the next turn */
   sessionId: string;
-  usage?: { inputTokens: number; outputTokens: number };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  };
 }
 
 export type ErrorCode =
-  | 'idle_timeout'
-  | 'max_timeout'
-  | 'nonzero_exit'
-  | 'rate_limit'
-  | 'spawn_error'
-  | 'stale_session'
-  | 'parse_error';
+  | 'idle_timeout'   // stdout silence exceeded idleTimeout
+  | 'max_timeout'    // wall-clock ceiling exceeded
+  | 'nonzero_exit'   // process exited with non-zero code
+  | 'rate_limit'     // stderr contained a rate-limit reset message
+  | 'spawn_error'    // process could not be started
+  | 'stale_session'  // stderr: "No conversation found with session ID"
+  | 'parse_error'    // line starts with '{' but is not valid JSON
+  | 'cli_error';     // inline error/error_detail/error_event from the CLI stream
 
 export interface ErrorEvent extends BaseEvent {
   type: 'error';

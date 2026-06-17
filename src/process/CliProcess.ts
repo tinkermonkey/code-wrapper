@@ -32,9 +32,6 @@ export class CliProcess {
   /**
    * Spawn the CLI, deliver the prompt, and yield normalized events until the
    * process exits (cleanly, by timeout, or by error).
-   *
-   * Idle and max timeouts are enforced by a watchdog that SIGTERMs the
-   * process; when the process exits, readline closes and the generator ends.
    */
   async *run(options: ProcessOptions): AsyncGenerator<ClaudeEvent> {
     const {
@@ -66,6 +63,13 @@ export class CliProcess {
     let killedBy: 'idle' | 'max' | null = null;
     const startedAt = Date.now();
     let lastOutputAt = Date.now();
+
+    // exitCode is set when the process fully closes (stdout + stderr drained).
+    // exitPromise lets us await that moment after readline ends.
+    let exitCode: number | null = null;
+    const exitPromise = new Promise<void>(resolve => {
+      proc.on('close', code => { exitCode = code; resolve(); });
+    });
 
     proc.stderr!.on('data', (chunk: Buffer) => {
       stderrBuf += chunk.toString();
@@ -104,8 +108,11 @@ export class CliProcess {
         }
       }
 
-      // Stdout closed — check stderr for well-known conditions that override
-      // the generic exit-code error.
+      // Readline ended (stdout closed). Wait for the process to fully exit so
+      // we have the exit code and complete stderr before deciding what to surface.
+      await exitPromise;
+
+      // Specific stderr conditions take precedence over the generic exit code.
       if (STALE_SESSION_RE.test(stderrBuf)) {
         yield mk({
           type: 'error',
@@ -134,6 +141,16 @@ export class CliProcess {
           code: 'max_timeout',
           detail: `Exceeded max runtime of ${maxTimeout}s`,
         });
+      } else {
+        const code = exitCode;
+        if (code !== null && code !== 0) {
+          yield mk({
+            type: 'error',
+            code: 'nonzero_exit',
+            detail: `Process exited with code ${code}`,
+            exitCode: code,
+          });
+        }
       }
     } catch (err) {
       yield mk({

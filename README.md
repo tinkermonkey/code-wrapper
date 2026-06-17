@@ -80,11 +80,24 @@ for await (const event of proc.run({
 | `text` | `text: string` |
 | `tool_use` | `id`, `name`, `input: unknown` |
 | `tool_result` | `toolUseId`, `isError`, `output: string` |
-| `done` | `sessionId`, `usage?: { inputTokens, outputTokens }` |
-| `error` | `code: ErrorCode`, `detail: string` |
+| `done` | `sessionId`, `usage?: { inputTokens, outputTokens, cacheReadInputTokens?, cacheCreationInputTokens? }` |
+| `error` | `code: ErrorCode`, `detail: string`, `exitCode?: number` |
 | `progress` | `elapsed: number` — defined; not yet emitted |
 
 All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
+
+### ErrorCode values
+
+| Code | When |
+|---|---|
+| `idle_timeout` | No stdout for `idleTimeout` seconds |
+| `max_timeout` | Wall-clock exceeded `maxTimeout` |
+| `nonzero_exit` | Process exited with non-zero code |
+| `rate_limit` | CLI hit its API rate limit |
+| `stale_session` | CLI reported the session ID is unknown |
+| `spawn_error` | Process could not be started |
+| `parse_error` | Line starts with `{` but is not valid JSON |
+| `cli_error` | Inline `error`/`error_detail`/`error_event` from the CLI stream |
 
 ## ProcessOptions
 
