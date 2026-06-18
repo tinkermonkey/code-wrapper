@@ -7,7 +7,7 @@ export interface ProcessOptions {
   prompt: string;
   /** Agent or skill to invoke (e.g. 'dr-architect') */
   agent?: string;
-  /** Pass --dangerously-skip-permissions */
+  /** Pass --permission-mode bypassPermissions */
   skipPermissions?: boolean;
   /** Path to an MCP config JSON file (--mcp-config) */
   mcpConfigPath?: string;

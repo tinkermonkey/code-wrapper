@@ -50,9 +50,9 @@ export class SessionManager {
     return this.store.get(this.ns + key);
   }
 
-  /** All sessions sorted by most-recently-active first */
+  /** Sessions belonging to this namespace, sorted by most-recently-active first */
   listSessions(): Session[] {
-    return this.store.all();
+    return this.store.all().filter(s => s.key.startsWith(this.ns));
   }
 
   /**

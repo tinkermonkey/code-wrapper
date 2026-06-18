@@ -49,20 +49,16 @@ class FileStore implements ISessionStore {
     try {
       this.data = JSON.parse(readFileSync(this.path, 'utf-8')) as Record<string, Session>;
     } catch {
+      // File does not exist yet (first use) or is unreadable — start empty.
       this.data = {};
     }
   }
 
   private flush(): void {
-    try {
-      mkdirSync(dirname(this.path), { recursive: true });
-      const tmp = `${this.path}.tmp`;
-      writeFileSync(tmp, JSON.stringify(this.data, null, 2), 'utf-8');
-      renameSync(tmp, this.path); // atomic on POSIX
-    } catch (err) {
-      // Non-fatal — next write will retry
-      console.error('[SessionStore] Failed to persist:', err);
-    }
+    mkdirSync(dirname(this.path), { recursive: true });
+    const tmp = `${this.path}.tmp`;
+    writeFileSync(tmp, JSON.stringify(this.data, null, 2), 'utf-8');
+    renameSync(tmp, this.path); // atomic on POSIX
   }
 }
 

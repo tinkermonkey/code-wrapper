@@ -48,7 +48,7 @@ The calling application wires all three together. The module imposes no threadin
  │                                                             │
  │  spawn(claude --print --verbose --output-format stream-json)│
  │      │                                                      │
- │      ├── stdin ◄── options.prompt                          │
+ │      ├── stdin ◄── options.prompt (write + end)            │
  │      │                                                      │
  │      ├── stdout ──▶ readline 'line' event                   │
  │      │                  │                                   │
@@ -56,17 +56,24 @@ The calling application wires all three together. The module imposes no threadin
  │      │           EventParser.parseCliLine(line, seq)        │
  │      │                  │                                   │
  │      │                  ▼                                   │
- │      │           push ──▶ shared async queue                 │
+ │      │           push ──▶ shared async queue                │
  │      │                                                      │
  │      ├── stderr ── buffered; checked after queue drains     │
+ │      │             • "No conversation found" → stale_session│
+ │      │             • rate limit message → rate_limit        │
  │      │                                                      │
  │      ├── exitCode ── awaited after queue drains             │
+ │      │             • non-zero (no stderr match) → nonzero_exit│
+ │      │                                                      │
+ │      ├── 'error' event ── spawn failures (ENOENT, EACCES)  │
+ │      │             • saved locally; yielded after queue     │
+ │      │             • pushes null sentinel to end the loop   │
  │      │                                                      │
  │      └── watchdog (setInterval, 5s tick)                   │
  │               • push ProgressEvent → shared async queue    │
  │               • idle timeout (stdout silence > N s)         │
  │               • max timeout (wall clock > M s)              │
- │               • SIGTERM → wait 3 s → SIGKILL               │
+ │               • SIGTERM → 3s → SIGKILL                     │
  │               • process death closes stdout                 │
  │               • readline 'close' pushes null sentinel       │
  │                                                             │
@@ -78,10 +85,7 @@ The calling application wires all three together. The module imposes no threadin
        caller routes:   WebSocket / Redis / SSE / in-process queue
 ```
 
-The shared async queue is the key architectural detail. Both readline (stdout lines → parsed
-events) and the watchdog (ProgressEvents) push into the same queue. The generator consumes
-from the queue, blocking only when it is empty. A `null` sentinel pushed by readline's
-`close` event terminates the consume loop.
+The shared async queue is the key architectural detail. Both readline (stdout lines → parsed events) and the watchdog (ProgressEvents) push into the same queue. The generator consumes from the queue, blocking only when it is empty. A `null` sentinel pushed by readline's `close` event (or by the `'error'` handler on spawn failure) terminates the consume loop.
 
 ---
 
@@ -94,7 +98,7 @@ type CliBackend = 'claude' | 'copilot';
 
 interface ProcessOptions {
   cwd: string;               // working directory for the CLI
-  prompt: string;            // delivered via stdin
+  prompt: string;            // delivered via proc.stdin.write() + .end()
   agent?: string;            // --agent <name>  (prepended before all other flags)
   skipPermissions?: boolean; // --permission-mode bypassPermissions (default false)
   mcpConfigPath?: string;    // --mcp-config <path>
@@ -134,20 +138,13 @@ type ClaudeEvent =
   | RawEvent         // { type: 'raw';        rawType: string; rawSubtype?: string; data: unknown }
 ```
 
-`ProgressEvent` is emitted by the watchdog every 5 seconds, independent of stdout activity.
-`elapsed` is seconds since process start. Use it for:
-- Heartbeat: telling upstream that the run is still alive
-- Progress UI: showing elapsed time during long tool calls
-- Idle detection at the application layer (without relying on `idle_timeout` error)
+`ProgressEvent` is emitted by the watchdog every 5 seconds, independent of stdout activity. `elapsed` is seconds since process start. Use it for heartbeats, progress UI, or application-layer idle detection.
 
-`ReadyEvent` fires from the `system/init` CLI event at process start — the session ID and
-model are available here, before the final `done` event.
+`ReadyEvent` fires from the `system/init` CLI event at process start — session ID and model are available here, before the final `done` event.
 
 `RetryEvent` fires from `system/api_retry` — the CLI is retrying a failed API call.
 
-`RawEvent` is the zero-loss fallback: any raw event type not explicitly handled (or any
-content block type not yet supported) is wrapped here. `data` contains the full raw JSON
-object. **No events are ever silently discarded.**
+`RawEvent` is the zero-loss fallback: any raw event type not explicitly handled (or any content block type not yet supported) is wrapped here. `data` contains the full raw JSON object. **No events are ever silently discarded.**
 
 `DoneEvent.usage` shape:
 ```typescript
@@ -166,7 +163,7 @@ type ErrorCode =
   | 'nonzero_exit'   // process exited with non-zero code
   | 'rate_limit'     // inline rate_limit_event or stderr pattern
   | 'stale_session'  // stderr: "No conversation found with session ID"
-  | 'spawn_error'    // process could not be started
+  | 'spawn_error'    // process could not be started (ENOENT, EACCES, etc.)
   | 'parse_error'    // line starts with '{' but is not valid JSON
   | 'cli_error'      // inline error/error_detail/error_event from the CLI stream
 ```
@@ -182,6 +179,7 @@ type ErrorCode =
 | `assistant` | `thinking` block | `ThinkingEvent` |
 | `assistant` | `tool_use` block | `ToolUseEvent` |
 | `assistant` | `server_tool_use`, `redacted_thinking`, other | `RawEvent` (rawSubtype = block.type) |
+| `assistant` | empty content array | `RawEvent` |
 | `tool_result` | — | `ToolResultEvent` (direct, from `--verbose`) |
 | `user` | — | `RawEvent` (full user turn preserved) |
 | `result` | — | `DoneEvent` (sessionId + all usage fields incl. cache) |
@@ -191,6 +189,7 @@ type ErrorCode =
 | Non-JSON plaintext line | — | `TextEvent` |
 | Any other type | — | `RawEvent` (generic fallback) |
 | Watchdog tick (every 5s) | — | `ProgressEvent { elapsed }` |
+| proc 'error' event (spawn failure) | — | `ErrorEvent { code: 'spawn_error' }` |
 | stderr at exit: stale session keyword | — | `ErrorEvent { code: 'stale_session' }` |
 | stderr at exit: rate limit keyword | — | `ErrorEvent { code: 'rate_limit' }` |
 | Non-zero exit code, no stderr match | — | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
@@ -213,25 +212,27 @@ interface Session {
 class SessionManager {
   constructor(options: {
     persistPath?: string;  // file path for JSON store; omit for in-memory only
-    namespace?: string;    // key prefix to isolate multiple managers in one file
+    namespace?: string;    // key prefix — isolates multiple managers in one file
   })
 
   newSession(key: string): Session
   resumeSession(key: string): Session | undefined
-  listSessions(): Session[]
+  listSessions(): Session[]              // returns only sessions in this namespace
   recordCliSessionId(key: string, cliSessionId: string): void  // call on DoneEvent
-  touch(key: string): void                                     // update lastActiveAt
-  clearSession(key: string): void                              // force-fresh on next call
+  touch(key: string): void
+  clearSession(key: string): void
 }
 ```
+
+`FileStore.flush()` throws on write failure (disk full, permissions, etc.) — the error propagates through `set()` / `delete()` to the caller. `load()` silently starts empty on a missing or unreadable file (expected on first use).
 
 ### ISessionStore
 
 ```typescript
 interface ISessionStore {
   get(key: string): Session | undefined;
-  set(session: Session): void;    // key is session.key — not a separate parameter
-  delete(key: string): void;
+  set(session: Session): void;    // throws on FileStore write failure
+  delete(key: string): void;      // throws on FileStore write failure
   all(): Session[];               // sorted by lastActiveAt descending
 }
 ```
@@ -254,8 +255,9 @@ claude
   [--mcp-config <path>]                  # if options.mcpConfigPath is set
   [--session-id <id>]                    # first message with a non-undefined sessionId
   [--resume <id>]                        # subsequent messages
-  -                                      # read prompt from stdin
 ```
+
+The prompt is written to `proc.stdin` directly (`write` + `end`). No positional stdin argument is passed to the CLI.
 
 ### CLAUDECODE environment deletion
 
@@ -269,27 +271,30 @@ spawn(bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env });
 
 ### Watchdog, shared queue, and ProgressEvent
 
-The watchdog (`setInterval`, 5s tick) and readline feed a shared async queue. The generator
-consumes from the queue, blocking only when empty:
+The watchdog (`setInterval`, 5s tick) and readline feed a shared async queue. The generator consumes from the queue, blocking only when empty:
 
 ```
 readline 'line'  →  parseCliLine()  →  pushEvent(event)
 watchdog tick    →  pushEvent(ProgressEvent)  →  check idle/max  →  maybe kill
 readline 'close' →  pushEvent(null)   ← sentinel that ends the consume loop
+proc 'error'     →  save spawnError   + pushEvent(null)
 generator        →  while (true) { await waitForEvent(); item = queue.shift(); if null: break; yield item }
 ```
 
-This means ProgressEvents flow out between stdout lines without blocking, giving callers a
-heartbeat even during long tool calls with no text output.
+On timeout the watchdog sends SIGTERM, then schedules SIGKILL 3 seconds later via `setTimeout`. If the process exits cleanly from SIGTERM (the common case), the `setTimeout` is cleared in the `finally` block. If it ignores SIGTERM, SIGKILL fires and forces termination, closing stdout and draining the queue.
 
-Exit code precedence after queue drains:
-1. `stale_session` (stderr match) — highest priority
-2. `rate_limit` (stderr match)
-3. `idle_timeout` / `max_timeout` (watchdog triggered)
-4. `nonzero_exit` (exit code ≠ 0, no match above)
-5. Clean exit — generator ends normally
+Exit precedence after queue drains:
+1. `spawn_error` (proc 'error' event) — highest priority
+2. `stale_session` (stderr match)
+3. `rate_limit` (stderr match)
+4. `idle_timeout` / `max_timeout` (watchdog triggered)
+5. `nonzero_exit` (exit code ≠ 0, no match above)
+6. Clean exit — generator ends normally
 
 ### Stale session recovery
+
+The pattern below is caller-side pseudocode — it is **not exported from this module**.
+Each caller implements their own version based on their session key strategy.
 
 ```typescript
 async function* runWithRecovery(
@@ -325,8 +330,9 @@ DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel
 | `--agent <name>` for skill invocation | `ProcessOptions.agent` |
 | `--mcp-config <path>` | `ProcessOptions.mcpConfigPath` |
 | `--session-id` (first message) vs `--resume` (resume) | `ProcessOptions.sessionId` + `isFirstMessage` |
-| Two-tier idle / max timeout with watchdog | `ProcessOptions.idleTimeout` + `maxTimeout` |
+| Two-tier idle / max timeout with SIGTERM → SIGKILL | `ProcessOptions.idleTimeout` + `maxTimeout` |
 | Heartbeat during long tool calls | `ProgressEvent` every 5s |
+| Spawn error capture (ENOENT, EACCES) | `ErrorEvent { code: 'spawn_error' }` |
 | Line-by-line stdout parsing | `EventParser` (called by `CliProcess`) |
 | Agent ready + early session ID | `ReadyEvent` (from `system/init`) |
 | API retry visibility | `RetryEvent` (from `system/api_retry`) |
@@ -339,6 +345,7 @@ DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel
 | Non-zero exit surfaced with code | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
 | Cache token accounting | `DoneEvent.usage.cacheReadInputTokens` / `cacheCreationInputTokens` |
 | Session ID persistence (survives restarts) | `SessionManager` with `FileStore` |
+| Namespace isolation for multi-tenant session files | `SessionManagerOptions.namespace` |
 | `newSession / resumeSession / recordCliSessionId / clearSession` | `SessionManager` API |
 
 ### What code-wrapper does NOT cover (stays in DR CLI)
@@ -403,7 +410,7 @@ Switchyard (Python)
                                           │
                                container stdout
                                     │
-  docker logs -f ◄───────────────────┘
+  docker logs -f ◄──────────────────┘
         │
   read_stream() (Python, line by line) → stream_callback → Redis
 ```
@@ -419,7 +426,7 @@ Switchyard (Python)
 | `system/api_retry` → retry event | `RetryEvent` | Same data, normalized |
 | `assistant/thinking` → thinking event | `ThinkingEvent` | Extended thinking content |
 | `--resume <session_id>` | `ProcessOptions.sessionId` + `isFirstMessage: false` | code-wrapper also adds `--session-id` for traceable first messages |
-| Two-phase cleanup (wait → kill) | Watchdog SIGTERM → 3s → SIGKILL | Same intent |
+| Two-phase cleanup (wait → kill) | Watchdog SIGTERM → 3s → SIGKILL | Same intent, same timing |
 | `result` event for done signal | `DoneEvent` | Identical raw event type |
 | `error`/`error_detail`/`error_event` | `ErrorEvent { code: 'cli_error' }` | Normalized |
 | Rate-limit detection | `ErrorEvent { code: 'rate_limit' }` | Inline + stderr fallback |

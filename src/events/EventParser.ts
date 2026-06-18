@@ -103,25 +103,34 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
 
   } else if (raw.type === 'assistant') {
     const msg = (raw as unknown as { message?: { content?: RawContentBlock[] } }).message;
-    for (const block of msg?.content ?? []) {
-      if (block.type === 'thinking' && block.thinking) {
-        events.push({
-          seq: seq++, timestamp, type: 'thinking', thinking: block.thinking,
-        } satisfies ThinkingEvent);
-      } else if (block.type === 'text' && block.text) {
-        events.push({ seq: seq++, timestamp, type: 'text', text: block.text } satisfies TextEvent);
-      } else if (block.type === 'tool_use' && block.id && block.name) {
-        events.push({
-          seq: seq++, timestamp, type: 'tool_use',
-          id: block.id, name: block.name, input: block.input ?? {},
-        } satisfies ToolUseEvent);
-      } else {
-        // server_tool_use, redacted_thinking, or any future block type
-        events.push({
-          seq: seq++, timestamp, type: 'raw',
-          rawType: raw.type, rawSubtype: block.type,
-          data: block as unknown,
-        } satisfies RawEvent);
+    const blocks = msg?.content ?? [];
+    if (blocks.length === 0) {
+      // Empty content array — preserve rather than silently discard
+      events.push({
+        seq: seq++, timestamp, type: 'raw',
+        rawType: raw.type, data: raw as unknown,
+      } satisfies RawEvent);
+    } else {
+      for (const block of blocks) {
+        if (block.type === 'thinking' && block.thinking) {
+          events.push({
+            seq: seq++, timestamp, type: 'thinking', thinking: block.thinking,
+          } satisfies ThinkingEvent);
+        } else if (block.type === 'text' && block.text) {
+          events.push({ seq: seq++, timestamp, type: 'text', text: block.text } satisfies TextEvent);
+        } else if (block.type === 'tool_use' && block.id && block.name) {
+          events.push({
+            seq: seq++, timestamp, type: 'tool_use',
+            id: block.id, name: block.name, input: block.input ?? {},
+          } satisfies ToolUseEvent);
+        } else {
+          // server_tool_use, redacted_thinking, or any future block type
+          events.push({
+            seq: seq++, timestamp, type: 'raw',
+            rawType: raw.type, rawSubtype: block.type,
+            data: block as unknown,
+          } satisfies RawEvent);
+        }
       }
     }
 
@@ -139,7 +148,7 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
     } satisfies ToolResultEvent);
 
   } else if (raw.type === 'user') {
-    // User turn events (tool results sent back to the model, or human-turn content).
+    // User turn events (tool results returned to the model, or human-turn content).
     // Captured as RawEvent so the full turn is preserved. When --verbose is active
     // the CLI also emits top-level tool_result events which are the canonical
     // ToolResultEvent source — this RawEvent is the complement, not a duplicate.

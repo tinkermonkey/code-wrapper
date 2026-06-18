@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { ClaudeEvent, ProgressEvent } from '../events/types.js';
+import type { ClaudeEvent, ErrorEvent, ProgressEvent } from '../events/types.js';
 import { parseCliLine } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
@@ -68,7 +68,6 @@ export class CliProcess {
     let lastOutputAt = Date.now();
 
     // exitCode is set when the process fully closes (stdout + stderr drained).
-    // exitPromise lets us await that moment after the queue drains.
     let exitCode: number | null = null;
     const exitPromise = new Promise<void>(resolve => {
       proc.on('close', code => { exitCode = code; resolve(); });
@@ -78,7 +77,7 @@ export class CliProcess {
       stderrBuf += chunk.toString();
     });
 
-    // Shared async queue fed by both readline (stdout lines) and the watchdog
+    // Shared async queue fed by readline (stdout lines) and the watchdog
     // (ProgressEvents). null is the sentinel that signals readline has closed.
     const queue: (ClaudeEvent | null)[] = [];
     let queueNotify: (() => void) | null = null;
@@ -92,6 +91,18 @@ export class CliProcess {
     const waitForEvent = (): Promise<void> =>
       new Promise<void>(r => { queueNotify = r; });
 
+    // Spawn errors (ENOENT, EACCES, etc.) arrive asynchronously via 'error'.
+    // Save the event so it can be yielded after the consume loop drains,
+    // regardless of whether proc.on('error') or rl.on('close') fires first.
+    let spawnError: ErrorEvent | null = null;
+    proc.on('error', (err: Error) => {
+      spawnError = {
+        seq: seq++, timestamp: Date.now(), type: 'error', code: 'spawn_error',
+        detail: err.message,
+      };
+      pushEvent(null); // terminate the consume loop
+    });
+
     // Wire readline output into the queue
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
@@ -103,8 +114,10 @@ export class CliProcess {
     });
     rl.on('close', () => pushEvent(null));
 
-    // Watchdog: emit a ProgressEvent every tick, then enforce timeouts.
-    // Runs until clearInterval in the finally block.
+    // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
+    // On timeout: SIGTERM first, SIGKILL after 3s if the process is still alive.
+    let sigkillTimer: ReturnType<typeof setTimeout> | null = null;
+
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (killedBy) return;
@@ -115,9 +128,11 @@ export class CliProcess {
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
         proc.kill('SIGTERM');
+        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), 3_000);
       } else if (now - startedAt > maxTimeout * 1_000) {
         killedBy = 'max';
         proc.kill('SIGTERM');
+        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), 3_000);
       }
     }, 5_000);
 
@@ -136,6 +151,12 @@ export class CliProcess {
       // Readline ended (stdout closed). Wait for the process to fully exit so
       // we have the exit code and complete stderr before deciding what to surface.
       await exitPromise;
+
+      // Spawn error takes priority — nothing meaningful can follow a failed spawn.
+      if (spawnError !== null) {
+        yield spawnError;
+        return;
+      }
 
       // Specific stderr conditions take precedence over the generic exit code.
       if (STALE_SESSION_RE.test(stderrBuf)) {
@@ -178,6 +199,7 @@ export class CliProcess {
         }
       }
     } catch (err) {
+      // Defensive catch — the consume loop and exit checks should not throw.
       yield mk({
         type: 'error',
         code: 'spawn_error',
@@ -185,6 +207,7 @@ export class CliProcess {
       });
     } finally {
       clearInterval(watchdog);
+      if (sigkillTimer !== null) clearTimeout(sigkillTimer);
       this.activeProc = null;
     }
   }
