@@ -178,7 +178,6 @@ export class CliProcess {
 
   private buildArgs(options: ProcessOptions): string[] {
     if (this.backend === 'copilot') {
-      // Copilot uses a different invocation and output format; reserved for v2
       throw new Error('Copilot backend is not yet implemented');
     }
 
@@ -192,7 +191,7 @@ export class CliProcess {
 
     const args = ['--print', '--verbose', '--output-format', 'stream-json'];
 
-    if (skipPermissions) args.push('--dangerously-skip-permissions');
+    if (skipPermissions) args.push('--permission-mode', 'bypassPermissions');
     if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
 
     if (sessionId) {

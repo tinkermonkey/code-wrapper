@@ -98,7 +98,7 @@ interface ProcessOptions {
   cwd: string;               // working directory for the CLI
   prompt: string;            // delivered via stdin
   agent?: string;            // --agent <name>  (prepended before all other flags)
-  skipPermissions?: boolean; // --dangerously-skip-permissions (default false)
+  skipPermissions?: boolean; // --permission-mode bypassPermissions (default false)
   mcpConfigPath?: string;    // --mcp-config <path>
 
   // Session continuity
@@ -112,8 +112,6 @@ interface ProcessOptions {
 }
 ```
 
-`--session-id` and `--resume` are distinct CLI flags. `--session-id` starts a fresh session with a caller-supplied traceable ID. `--resume` continues an existing session. When `sessionId` is `undefined` (very first turn), neither flag is passed — the CLI starts an anonymous session and returns the assigned ID in the `result` event.
-
 ### ClaudeEvent union
 
 All events extend `BaseEvent`:
@@ -126,35 +124,43 @@ interface BaseEvent {
 }
 
 type ClaudeEvent =
-  | TextEvent        // { type: 'text';        text: string }
-  | ToolUseEvent     // { type: 'tool_use';    id: string; name: string; input: unknown }
+  | TextEvent        // { type: 'text';       text: string }
+  | ThinkingEvent    // { type: 'thinking';   thinking: string }
+  | ToolUseEvent     // { type: 'tool_use';   id: string; name: string; input: unknown }
   | ToolResultEvent  // { type: 'tool_result'; toolUseId: string; isError: boolean; output: string }
-  | ProgressEvent    // { type: 'progress';    elapsed: number }  — defined; not yet emitted
-  | DoneEvent        // { type: 'done';        sessionId: string; usage?: Usage }
-  | ErrorEvent       // { type: 'error';       code: ErrorCode; detail: string; exitCode?: number }
+  | ProgressEvent    // { type: 'progress';   elapsed: number }  — defined; not yet emitted
+  | ReadyEvent       // { type: 'ready';      sessionId: string; model?: string; tools?: string[] }
+  | RetryEvent       // { type: 'retry';      attempt: number; delayMs?: number; error?: string }
+  | DoneEvent        // { type: 'done';       sessionId: string; usage?: Usage }
+  | ErrorEvent       // { type: 'error';      code: ErrorCode; detail: string; exitCode?: number }
+  | RawEvent         // { type: 'raw';        rawType: string; rawSubtype?: string; data: unknown }
 ```
+
+`ReadyEvent` fires from the `system/init` CLI event at process start — the session ID and
+model are available here, before the final `done` event.
+
+`RetryEvent` fires from `system/api_retry` — the CLI is retrying a failed API call.
+
+`RawEvent` is the zero-loss fallback: any raw event type not explicitly handled (or any
+content block type not yet supported) is wrapped here. `data` contains the full raw JSON
+object. **No events are ever silently discarded.**
 
 `DoneEvent.usage` shape:
 ```typescript
 {
   inputTokens: number;
   outputTokens: number;
-  cacheReadInputTokens?: number;     // present when prompt cache was read
-  cacheCreationInputTokens?: number; // present when a new cache entry was created
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 ```
-
-`ToolUseEvent.input` is the raw tool input object as received from the CLI (`unknown` —
-shape is tool-specific). `ToolResultEvent.output` is the full combined text from all
-content blocks. Both are unsized — callers sinking to size-constrained destinations
-(Redis, WebSocket) are responsible for their own truncation.
 
 ```typescript
 type ErrorCode =
   | 'idle_timeout'   // stdout silence exceeded idleTimeout
   | 'max_timeout'    // wall-clock ceiling exceeded
   | 'nonzero_exit'   // process exited with non-zero code
-  | 'rate_limit'     // stderr contained a rate-limit reset message
+  | 'rate_limit'     // inline rate_limit_event or stderr pattern
   | 'stale_session'  // stderr: "No conversation found with session ID"
   | 'spawn_error'    // process could not be started
   | 'parse_error'    // line starts with '{' but is not valid JSON
@@ -163,27 +169,33 @@ type ErrorCode =
 
 ### Raw stream-json → ClaudeEvent mapping
 
-| Raw type | Fields extracted | Yields |
+| Raw type | Raw subtype / block type | Yields |
 |---|---|---|
-| `assistant` | `message.content[].type === 'text'` → `.text` | `TextEvent` per text block |
-| `assistant` | `message.content[].type === 'tool_use'` | `ToolUseEvent` per tool-use block |
-| `tool_result` | `tool_use_id`, `content[].text`, `is_error` | `ToolResultEvent` |
-| `result` | `session_id`, all `usage.*` fields incl. cache | `DoneEvent` |
-| `error` / `error_detail` / `error_event` | `message` or `error` string | `ErrorEvent { code: 'cli_error' }` |
-| `user` | *(input echo)* | dropped |
-| `system` | *(CLI bookkeeping)* | dropped |
-| JSON line starting `{` that fails parse | raw line (first 200 chars) | `ErrorEvent { code: 'parse_error' }` |
-| Non-JSON plaintext line | raw text | `TextEvent` |
+| `system` | `init` | `ReadyEvent` (sessionId, model, tool names) |
+| `system` | `api_retry` | `RetryEvent` (attempt, delayMs, error) |
+| `system` | any other subtype | `RawEvent` |
+| `assistant` | `text` block | `TextEvent` |
+| `assistant` | `thinking` block | `ThinkingEvent` |
+| `assistant` | `tool_use` block | `ToolUseEvent` |
+| `assistant` | `server_tool_use`, `redacted_thinking`, other | `RawEvent` (rawSubtype = block.type) |
+| `tool_result` | — | `ToolResultEvent` (direct, from `--verbose`) |
+| `user` | — | `RawEvent` (full user turn preserved) |
+| `result` | — | `DoneEvent` (sessionId + all usage fields incl. cache) |
+| `rate_limit_event` | — | `ErrorEvent { code: 'rate_limit' }` |
+| `error` / `error_detail` / `error_event` | — | `ErrorEvent { code: 'cli_error' }` |
+| JSON line starting `{` that fails parse | — | `ErrorEvent { code: 'parse_error' }` |
+| Non-JSON plaintext line | — | `TextEvent` |
+| Any other type | — | `RawEvent` (generic fallback) |
 | stderr at exit: stale session keyword | — | `ErrorEvent { code: 'stale_session' }` |
 | stderr at exit: rate limit keyword | — | `ErrorEvent { code: 'rate_limit' }` |
-| Non-zero exit code, no stderr match | exit code | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
+| Non-zero exit code, no stderr match | — | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
 
 ### Session
 
 ```typescript
 interface Session {
   key: string;            // app-defined key (CallSid, userId, path, task_id, …)
-  cliSessionId?: string;  // assigned by the CLI, arrives in DoneEvent.sessionId
+  cliSessionId?: string;  // assigned by the CLI, arrives in ReadyEvent and DoneEvent
   createdAt: string;      // ISO 8601
   lastActiveAt: string;   // ISO 8601; updated by touch() and recordCliSessionId()
   isFirst: boolean;       // true until recordCliSessionId() is called
@@ -233,11 +245,11 @@ claude
   --print
   --verbose
   --output-format stream-json
-  [--dangerously-skip-permissions]   # if skipPermissions === true (not the default)
-  [--mcp-config <path>]              # if options.mcpConfigPath is set
-  [--session-id <id>]                # first message with a non-undefined sessionId
-  [--resume <id>]                    # subsequent messages
-  -                                  # read prompt from stdin
+  [--permission-mode bypassPermissions]  # if skipPermissions === true
+  [--mcp-config <path>]                  # if options.mcpConfigPath is set
+  [--session-id <id>]                    # first message with a non-undefined sessionId
+  [--resume <id>]                        # subsequent messages
+  -                                      # read prompt from stdin
 ```
 
 ### CLAUDECODE environment deletion
@@ -292,17 +304,20 @@ DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel
 |---|---|
 | Spawning `claude --print --verbose --output-format stream-json` | `CliProcess.run(ProcessOptions)` |
 | `CLAUDECODE` env deletion for nested execution | built into `CliProcess` |
-| `--dangerously-skip-permissions` flag | `ProcessOptions.skipPermissions` (opt-in; default `false`) |
+| `--permission-mode bypassPermissions` flag | `ProcessOptions.skipPermissions` (opt-in; default `false`) |
 | `--agent <name>` for skill invocation | `ProcessOptions.agent` |
 | `--mcp-config <path>` | `ProcessOptions.mcpConfigPath` |
 | `--session-id` (first message) vs `--resume` (resume) | `ProcessOptions.sessionId` + `isFirstMessage` |
 | Two-tier idle / max timeout with watchdog | `ProcessOptions.idleTimeout` + `maxTimeout` |
 | Line-by-line stdout parsing | `EventParser` (called by `CliProcess`) |
-| Typed event stream: text, tool_use, tool_result, done, error | `ClaudeEvent` union, `AsyncGenerator` |
+| Agent ready + early session ID | `ReadyEvent` (from `system/init`) |
+| API retry visibility | `RetryEvent` (from `system/api_retry`) |
+| Typed event stream: text, thinking, tool_use, tool_result, ready, retry, done, error | `ClaudeEvent` union, `AsyncGenerator` |
+| Zero-loss event capture (unknown types preserved) | `RawEvent` fallback |
 | Monotonic `seq` for reliable replay / dedup | `BaseEvent.seq` |
-| Inline CLI error events (`error`/`error_detail`/`error_event`) | `ErrorEvent { code: 'cli_error' }` |
+| Inline CLI error events | `ErrorEvent { code: 'cli_error' }` |
+| Inline rate limit events | `ErrorEvent { code: 'rate_limit' }` |
 | Stale session detection | `ErrorEvent { code: 'stale_session' }` |
-| Rate limit detection | `ErrorEvent { code: 'rate_limit' }` |
 | Non-zero exit surfaced with code | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
 | Cache token accounting | `DoneEvent.usage.cacheReadInputTokens` / `cacheCreationInputTokens` |
 | Session ID persistence (survives restarts) | `SessionManager` with `FileStore` |
@@ -337,11 +352,18 @@ for await (const event of proc.run({
   sessionId: session.cliSessionId,
   isFirstMessage: session.isFirst,
 })) {
-  if (event.type === 'text') sseStream.write(event.text);
-  if (event.type === 'done') sessions.recordCliSessionId(callerId, event.sessionId);
-  if (event.type === 'error') {
-    if (event.code === 'stale_session') sessions.clearSession(callerId);
-    logger.error(event.code, event.detail);
+  switch (event.type) {
+    case 'ready':       onAgentReady(event.sessionId, event.model); break;
+    case 'text':        sseStream.write(event.text); break;
+    case 'thinking':    logger.debug('thinking', event.thinking.slice(0, 80)); break;
+    case 'tool_use':    telemetry.toolCall(event.name); break;
+    case 'retry':       logger.warn('api_retry', { attempt: event.attempt }); break;
+    case 'done':        sessions.recordCliSessionId(callerId, event.sessionId); break;
+    case 'error':
+      if (event.code === 'stale_session') sessions.clearSession(callerId);
+      logger.error(event.code, event.detail);
+      break;
+    case 'raw':         logger.debug('unhandled_cli_event', event.rawType); break;
   }
 }
 ```
@@ -362,7 +384,7 @@ Switchyard (Python)
                                           │
                                container stdout
                                     │
-  docker logs -f ◄──────────────────┘
+  docker logs -f ◄───────────────────┘
         │
   read_stream() (Python, line by line) → stream_callback → Redis
 ```
@@ -374,13 +396,17 @@ Switchyard (Python)
 | `subprocess.Popen` + `stdout=PIPE` | `CliProcess` spawn + readline | Direct vs Docker-tailed; same line-by-line approach |
 | `json.loads(line)` per line | `EventParser.parseCliLine()` | Same parsing logic |
 | `stream_callback(event)` observer | `AsyncGenerator<ClaudeEvent>` | Pull vs push; same destination-agnostic principle |
+| `system/init` → ready + session ID | `ReadyEvent` | Same data, normalized |
+| `system/api_retry` → retry event | `RetryEvent` | Same data, normalized |
+| `assistant/thinking` → thinking event | `ThinkingEvent` | Extended thinking content |
 | `--resume <session_id>` | `ProcessOptions.sessionId` + `isFirstMessage: false` | code-wrapper also adds `--session-id` for traceable first messages |
-| Two-phase cleanup (wait 30s → kill) | Watchdog SIGTERM → 3s → SIGKILL | Same intent |
+| Two-phase cleanup (wait → kill) | Watchdog SIGTERM → 3s → SIGKILL | Same intent |
 | `result` event for done signal | `DoneEvent` | Identical raw event type |
-| `error`/`error_detail`/`error_event` | `ErrorEvent { code: 'cli_error' }` | Normalized; Switchyard checks raw `type` string |
-| Rate-limit detection | `ErrorEvent { code: 'rate_limit' }` | Switchyard adds circuit breaker on top |
-| `session_id` from `result` | `DoneEvent.sessionId` | Same field, same timing |
+| `error`/`error_detail`/`error_event` | `ErrorEvent { code: 'cli_error' }` | Normalized |
+| Rate-limit detection | `ErrorEvent { code: 'rate_limit' }` | Inline + stderr fallback |
+| `session_id` from `result` | `DoneEvent.sessionId` | Also available earlier in `ReadyEvent` |
 | `usage.*` incl. cache fields | `DoneEvent.usage` | All four fields extracted |
+| Unknown/future event types | `RawEvent` | Switchyard drops; code-wrapper never drops |
 
 ### What code-wrapper does NOT cover (stays in Switchyard)
 
@@ -426,4 +452,5 @@ Switchyard (Python)
 | Gap | Description | Priority |
 |---|---|---|
 | `ProgressEvent` not emitted | Defined in `types.ts` with `elapsed: number`. Intended for periodic watchdog heartbeats. Not yet emitted by `CliProcess`. | Low |
+| `user` event ToolResultEvent extraction | `user` turn events are captured as `RawEvent`. When `--verbose` is active the CLI also emits top-level `tool_result` events (the canonical source). If the CLI does NOT emit top-level `tool_result` events in some configurations, tool results would only appear in `RawEvent.data`. | Low |
 | Copilot backend | `CliProcess('copilot')` is declared but throws on use. Reserved for v2. | Future |

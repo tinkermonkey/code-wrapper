@@ -38,7 +38,6 @@ import { CliProcess, SessionManager } from '@tinkermonkey/code-wrapper';
 const proc = new CliProcess('claude');
 const sessions = new SessionManager({ persistPath: './sessions.json' });
 
-// Start or resume a conversation keyed by any app-defined string
 const session = sessions.resumeSession(callerId) ?? sessions.newSession(callerId);
 
 for await (const event of proc.run({
@@ -49,9 +48,24 @@ for await (const event of proc.run({
   isFirstMessage: session.isFirst,   // true → --session-id; false → --resume
 })) {
   switch (event.type) {
-    case 'text':        process.stdout.write(event.text); break;
-    case 'tool_use':    console.log('Tool:', event.name, event.input); break;
-    case 'tool_result': console.log('Result:', event.output); break;
+    case 'ready':
+      console.log('Agent ready, session:', event.sessionId, 'model:', event.model);
+      break;
+    case 'text':
+      process.stdout.write(event.text);
+      break;
+    case 'thinking':
+      console.log('Thinking:', event.thinking.slice(0, 80));
+      break;
+    case 'tool_use':
+      console.log('Tool:', event.name, event.input);
+      break;
+    case 'tool_result':
+      console.log('Result:', event.output);
+      break;
+    case 'retry':
+      console.log(`API retry #${event.attempt}`, event.error);
+      break;
     case 'done':
       sessions.recordCliSessionId(callerId, event.sessionId);
       console.log('Tokens:', event.usage);
@@ -59,6 +73,9 @@ for await (const event of proc.run({
     case 'error':
       if (event.code === 'stale_session') sessions.clearSession(callerId);
       console.error(event.code, event.detail);
+      break;
+    case 'raw':
+      // Unrecognized CLI event — inspect rawType/rawSubtype if needed
       break;
   }
 }
@@ -75,16 +92,20 @@ for await (const event of proc.run({
 
 ## Event types
 
-| Type | Key fields |
-|---|---|
-| `text` | `text: string` |
-| `tool_use` | `id`, `name`, `input: unknown` |
-| `tool_result` | `toolUseId`, `isError`, `output: string` |
-| `done` | `sessionId`, `usage?: { inputTokens, outputTokens, cacheReadInputTokens?, cacheCreationInputTokens? }` |
-| `error` | `code: ErrorCode`, `detail: string`, `exitCode?: number` |
-| `progress` | `elapsed: number` — defined; not yet emitted |
-
 All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
+
+| Type | Key fields | Notes |
+|---|---|---|
+| `text` | `text: string` | Assistant text output |
+| `thinking` | `thinking: string` | Extended thinking content |
+| `tool_use` | `id`, `name`, `input: unknown` | Tool call by the agent |
+| `tool_result` | `toolUseId`, `isError`, `output: string` | Tool execution result |
+| `ready` | `sessionId`, `model?`, `tools?: string[]` | Fires at process start; session ID available immediately |
+| `retry` | `attempt`, `delayMs?`, `error?` | CLI retrying a failed API call |
+| `done` | `sessionId`, `usage?` | Run complete — store `sessionId` for next turn |
+| `error` | `code: ErrorCode`, `detail`, `exitCode?` | See ErrorCode table |
+| `raw` | `rawType`, `rawSubtype?`, `data: unknown` | Unrecognized CLI event — nothing is silently discarded |
+| `progress` | `elapsed: number` | Defined; not yet emitted |
 
 ### ErrorCode values
 
@@ -93,7 +114,7 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 | `idle_timeout` | No stdout for `idleTimeout` seconds |
 | `max_timeout` | Wall-clock exceeded `maxTimeout` |
 | `nonzero_exit` | Process exited with non-zero code |
-| `rate_limit` | CLI hit its API rate limit |
+| `rate_limit` | CLI hit its API rate limit (inline `rate_limit_event` or stderr pattern) |
 | `stale_session` | CLI reported the session ID is unknown |
 | `spawn_error` | Process could not be started |
 | `parse_error` | Line starts with `{` but is not valid JSON |
@@ -105,7 +126,7 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 |---|---|---|
 | `cwd` | required | Working directory for the CLI |
 | `prompt` | required | Delivered via stdin |
-| `skipPermissions` | `false` | Pass `--dangerously-skip-permissions` |
+| `skipPermissions` | `false` | Pass `--permission-mode bypassPermissions` |
 | `agent` | — | `--agent <name>` (prepended first) |
 | `mcpConfigPath` | — | `--mcp-config <path>` |
 | `sessionId` | — | CLI session ID for continuity |

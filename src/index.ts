@@ -9,12 +9,16 @@ export type {
   ClaudeEventType,
   BaseEvent,
   TextEvent,
+  ThinkingEvent,
   ToolUseEvent,
   ToolResultEvent,
   ProgressEvent,
+  ReadyEvent,
+  RetryEvent,
   DoneEvent,
   ErrorEvent,
   ErrorCode,
+  RawEvent,
 } from './events/types.js';
 
 // Sessions
