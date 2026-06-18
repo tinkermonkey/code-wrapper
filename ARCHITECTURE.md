@@ -50,30 +50,27 @@ The calling application wires all three together. The module imposes no threadin
  │      │                                                      │
  │      ├── stdin ◄── options.prompt                          │
  │      │                                                      │
- │      ├── stdout ──▶ readline (line by line)                │
+ │      ├── stdout ──▶ readline 'line' event                   │
  │      │                  │                                   │
  │      │                  ▼                                   │
  │      │           EventParser.parseCliLine(line, seq)        │
  │      │                  │                                   │
  │      │                  ▼                                   │
- │      │           ClaudeEvent[]  (0, 1, or many per line)   │
- │      │                  │                                   │
- │      │                  ▼                                   │
- │      │           yield ──▶ AsyncGenerator<ClaudeEvent>      │
+ │      │           push ──▶ shared async queue                 │
  │      │                                                      │
- │      ├── stderr ── buffered; checked after readline ends    │
- │      │             • "No conversation found" → stale_session│
- │      │             • rate limit message → rate_limit        │
+ │      ├── stderr ── buffered; checked after queue drains     │
  │      │                                                      │
- │      ├── exitCode ── awaited after readline ends            │
- │      │             • non-zero (no stderr match) → nonzero_exit│
+ │      ├── exitCode ── awaited after queue drains             │
  │      │                                                      │
  │      └── watchdog (setInterval, 5s tick)                   │
+ │               • push ProgressEvent → shared async queue    │
  │               • idle timeout (stdout silence > N s)         │
  │               • max timeout (wall clock > M s)              │
  │               • SIGTERM → wait 3 s → SIGKILL               │
  │               • process death closes stdout                 │
- │               • readline 'close' ends the generator         │
+ │               • readline 'close' pushes null sentinel       │
+ │                                                             │
+ │      shared async queue ──▶ yield ──▶ AsyncGenerator        │
  └─────────────────────────────────────────────────────────────┘
                 │
                 ▼
@@ -81,9 +78,10 @@ The calling application wires all three together. The module imposes no threadin
        caller routes:   WebSocket / Redis / SSE / in-process queue
 ```
 
-> **External kill**: If the caller invokes `proc.kill()` directly, `killedBy` is never set.
-> The generator terminates after readline closes. If the process exits non-zero, a
-> `nonzero_exit` error is still yielded via the exit code check.
+The shared async queue is the key architectural detail. Both readline (stdout lines → parsed
+events) and the watchdog (ProgressEvents) push into the same queue. The generator consumes
+from the queue, blocking only when it is empty. A `null` sentinel pushed by readline's
+`close` event terminates the consume loop.
 
 ---
 
@@ -128,13 +126,19 @@ type ClaudeEvent =
   | ThinkingEvent    // { type: 'thinking';   thinking: string }
   | ToolUseEvent     // { type: 'tool_use';   id: string; name: string; input: unknown }
   | ToolResultEvent  // { type: 'tool_result'; toolUseId: string; isError: boolean; output: string }
-  | ProgressEvent    // { type: 'progress';   elapsed: number }  — defined; not yet emitted
+  | ProgressEvent    // { type: 'progress';   elapsed: number }  — emitted every 5s by watchdog
   | ReadyEvent       // { type: 'ready';      sessionId: string; model?: string; tools?: string[] }
   | RetryEvent       // { type: 'retry';      attempt: number; delayMs?: number; error?: string }
   | DoneEvent        // { type: 'done';       sessionId: string; usage?: Usage }
   | ErrorEvent       // { type: 'error';      code: ErrorCode; detail: string; exitCode?: number }
   | RawEvent         // { type: 'raw';        rawType: string; rawSubtype?: string; data: unknown }
 ```
+
+`ProgressEvent` is emitted by the watchdog every 5 seconds, independent of stdout activity.
+`elapsed` is seconds since process start. Use it for:
+- Heartbeat: telling upstream that the run is still alive
+- Progress UI: showing elapsed time during long tool calls
+- Idle detection at the application layer (without relying on `idle_timeout` error)
 
 `ReadyEvent` fires from the `system/init` CLI event at process start — the session ID and
 model are available here, before the final `done` event.
@@ -186,6 +190,7 @@ type ErrorCode =
 | JSON line starting `{` that fails parse | — | `ErrorEvent { code: 'parse_error' }` |
 | Non-JSON plaintext line | — | `TextEvent` |
 | Any other type | — | `RawEvent` (generic fallback) |
+| Watchdog tick (every 5s) | — | `ProgressEvent { elapsed }` |
 | stderr at exit: stale session keyword | — | `ErrorEvent { code: 'stale_session' }` |
 | stderr at exit: rate limit keyword | — | `ErrorEvent { code: 'rate_limit' }` |
 | Non-zero exit code, no stderr match | — | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
@@ -262,10 +267,22 @@ delete env['CLAUDECODE'];
 spawn(bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env });
 ```
 
-### Watchdog and exit code handling
+### Watchdog, shared queue, and ProgressEvent
 
-A `setInterval` ticks every 5 seconds and enforces two deadlines (idle, max). After the readline loop ends (stdout closed), `CliProcess` awaits `exitPromise` to capture the process exit code before surfacing any error. Precedence:
+The watchdog (`setInterval`, 5s tick) and readline feed a shared async queue. The generator
+consumes from the queue, blocking only when empty:
 
+```
+readline 'line'  →  parseCliLine()  →  pushEvent(event)
+watchdog tick    →  pushEvent(ProgressEvent)  →  check idle/max  →  maybe kill
+readline 'close' →  pushEvent(null)   ← sentinel that ends the consume loop
+generator        →  while (true) { await waitForEvent(); item = queue.shift(); if null: break; yield item }
+```
+
+This means ProgressEvents flow out between stdout lines without blocking, giving callers a
+heartbeat even during long tool calls with no text output.
+
+Exit code precedence after queue drains:
 1. `stale_session` (stderr match) — highest priority
 2. `rate_limit` (stderr match)
 3. `idle_timeout` / `max_timeout` (watchdog triggered)
@@ -309,10 +326,11 @@ DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel
 | `--mcp-config <path>` | `ProcessOptions.mcpConfigPath` |
 | `--session-id` (first message) vs `--resume` (resume) | `ProcessOptions.sessionId` + `isFirstMessage` |
 | Two-tier idle / max timeout with watchdog | `ProcessOptions.idleTimeout` + `maxTimeout` |
+| Heartbeat during long tool calls | `ProgressEvent` every 5s |
 | Line-by-line stdout parsing | `EventParser` (called by `CliProcess`) |
 | Agent ready + early session ID | `ReadyEvent` (from `system/init`) |
 | API retry visibility | `RetryEvent` (from `system/api_retry`) |
-| Typed event stream: text, thinking, tool_use, tool_result, ready, retry, done, error | `ClaudeEvent` union, `AsyncGenerator` |
+| Typed event stream: text, thinking, tool_use, tool_result, progress, ready, retry, done, error | `ClaudeEvent` union, `AsyncGenerator` |
 | Zero-loss event capture (unknown types preserved) | `RawEvent` fallback |
 | Monotonic `seq` for reliable replay / dedup | `BaseEvent.seq` |
 | Inline CLI error events | `ErrorEvent { code: 'cli_error' }` |
@@ -357,6 +375,7 @@ for await (const event of proc.run({
     case 'text':        sseStream.write(event.text); break;
     case 'thinking':    logger.debug('thinking', event.thinking.slice(0, 80)); break;
     case 'tool_use':    telemetry.toolCall(event.name); break;
+    case 'progress':    heartbeat(event.elapsed); break;
     case 'retry':       logger.warn('api_retry', { attempt: event.attempt }); break;
     case 'done':        sessions.recordCliSessionId(callerId, event.sessionId); break;
     case 'error':
@@ -451,6 +470,5 @@ Switchyard (Python)
 
 | Gap | Description | Priority |
 |---|---|---|
-| `ProgressEvent` not emitted | Defined in `types.ts` with `elapsed: number`. Intended for periodic watchdog heartbeats. Not yet emitted by `CliProcess`. | Low |
 | `user` event ToolResultEvent extraction | `user` turn events are captured as `RawEvent`. When `--verbose` is active the CLI also emits top-level `tool_result` events (the canonical source). If the CLI does NOT emit top-level `tool_result` events in some configurations, tool results would only appear in `RawEvent.data`. | Low |
 | Copilot backend | `CliProcess('copilot')` is declared but throws on use. Reserved for v2. | Future |

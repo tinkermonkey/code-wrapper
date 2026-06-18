@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { ClaudeEvent } from '../events/types.js';
+import type { ClaudeEvent, ProgressEvent } from '../events/types.js';
 import { parseCliLine } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
@@ -32,6 +32,9 @@ export class CliProcess {
   /**
    * Spawn the CLI, deliver the prompt, and yield normalized events until the
    * process exits (cleanly, by timeout, or by error).
+   *
+   * ProgressEvents are emitted by the watchdog every 5 seconds regardless of
+   * stdout activity, giving callers a heartbeat during long tool calls.
    */
   async *run(options: ProcessOptions): AsyncGenerator<ClaudeEvent> {
     const {
@@ -65,7 +68,7 @@ export class CliProcess {
     let lastOutputAt = Date.now();
 
     // exitCode is set when the process fully closes (stdout + stderr drained).
-    // exitPromise lets us await that moment after readline ends.
+    // exitPromise lets us await that moment after the queue drains.
     let exitCode: number | null = null;
     const exitPromise = new Promise<void>(resolve => {
       proc.on('close', code => { exitCode = code; resolve(); });
@@ -75,11 +78,40 @@ export class CliProcess {
       stderrBuf += chunk.toString();
     });
 
-    // Watchdog kills the process on idle or hard timeout. When killed,
-    // stdout closes, readline ends, and the for-await loop exits naturally.
+    // Shared async queue fed by both readline (stdout lines) and the watchdog
+    // (ProgressEvents). null is the sentinel that signals readline has closed.
+    const queue: (ClaudeEvent | null)[] = [];
+    let queueNotify: (() => void) | null = null;
+
+    const pushEvent = (e: ClaudeEvent | null): void => {
+      queue.push(e);
+      queueNotify?.();
+      queueNotify = null;
+    };
+
+    const waitForEvent = (): Promise<void> =>
+      new Promise<void>(r => { queueNotify = r; });
+
+    // Wire readline output into the queue
+    const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
+    rl.on('line', (line: string) => {
+      lastOutputAt = Date.now();
+      for (const event of parseCliLine(line, seq)) {
+        seq = event.seq + 1;
+        pushEvent(event);
+      }
+    });
+    rl.on('close', () => pushEvent(null));
+
+    // Watchdog: emit a ProgressEvent every tick, then enforce timeouts.
+    // Runs until clearInterval in the finally block.
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (killedBy) return;
+      pushEvent({
+        seq: seq++, timestamp: now, type: 'progress',
+        elapsed: Math.floor((now - startedAt) / 1_000),
+      } satisfies ProgressEvent);
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
         proc.kill('SIGTERM');
@@ -93,19 +125,12 @@ export class CliProcess {
       ({ ...e, seq: seq++, timestamp: Date.now() } as ClaudeEvent);
 
     try {
-      const rl = createInterface({
-        input: proc.stdout!,
-        terminal: false,
-        crlfDelay: Infinity,
-      });
-
-      for await (const line of rl) {
-        lastOutputAt = Date.now();
-        const events = parseCliLine(line, seq);
-        for (const event of events) {
-          seq = event.seq + 1;
-          yield event;
-        }
+      // Consume from the shared queue until readline closes (null sentinel)
+      while (true) {
+        if (queue.length === 0) await waitForEvent();
+        const item = queue.shift()!;
+        if (item === null) break;
+        yield item;
       }
 
       // Readline ended (stdout closed). Wait for the process to fully exit so
