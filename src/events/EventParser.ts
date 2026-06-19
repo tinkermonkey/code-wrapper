@@ -135,7 +135,9 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
     }
 
   } else if (raw.type === 'tool_result') {
-    // Direct top-level tool_result event emitted with --verbose
+    // Direct top-level tool_result event emitted with --verbose (always active).
+    // This is the canonical ToolResultEvent source — the corresponding user-turn
+    // RawEvent below is the complement, not a duplicate.
     const output = (raw.content ?? [])
       .filter(c => c.type === 'text')
       .map(c => c.text ?? '')
@@ -148,42 +150,14 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
     } satisfies ToolResultEvent);
 
   } else if (raw.type === 'user') {
-    // Always preserve the full user turn as RawEvent.
+    // Full user turn preserved as RawEvent. The CLI emits a top-level
+    // tool_result event (handled above) for each tool result when --verbose
+    // is active, which is always the case via buildArgs(). Extracting
+    // ToolResultEvents here too would produce duplicates.
     events.push({
       seq: seq++, timestamp, type: 'raw',
       rawType: raw.type, data: raw as unknown,
     } satisfies RawEvent);
-
-    // Also extract any tool_result blocks as typed ToolResultEvents, so
-    // callers receive them even when --verbose top-level events are absent.
-    type UserBlock = {
-      type: string;
-      tool_use_id?: string;
-      content?: unknown;
-      is_error?: boolean;
-    };
-    const userContent = (raw as unknown as {
-      message?: { content?: UserBlock[] };
-    }).message?.content ?? [];
-
-    for (const block of userContent) {
-      if (block.type !== 'tool_result') continue;
-      let output = '';
-      if (typeof block.content === 'string') {
-        output = block.content;
-      } else if (Array.isArray(block.content)) {
-        output = (block.content as Array<{ type: string; text?: string }>)
-          .filter(c => c.type === 'text')
-          .map(c => c.text ?? '')
-          .join('');
-      }
-      events.push({
-        seq: seq++, timestamp, type: 'tool_result',
-        toolUseId: block.tool_use_id ?? '',
-        isError: block.is_error ?? false,
-        output,
-      } satisfies ToolResultEvent);
-    }
 
   } else if (raw.type === 'result') {
     const u = raw.usage;

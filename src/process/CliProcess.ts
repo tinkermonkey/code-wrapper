@@ -141,7 +141,13 @@ export class CliProcess {
       proc.kill('SIGTERM');
       sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), 3_000);
     };
-    if (signal) signal.addEventListener('abort', abortHandler);
+    if (signal) {
+      signal.addEventListener('abort', abortHandler);
+      // Re-check after registering: guards against runtimes (e.g. Worker
+      // threads) where abort can be dispatched across thread boundaries
+      // between the pre-flight check and addEventListener.
+      if (signal.aborted) abortHandler();
+    }
 
     // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
     // On timeout: SIGTERM first, SIGKILL after 3s if still alive.
