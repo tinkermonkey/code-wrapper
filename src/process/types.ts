@@ -38,4 +38,15 @@ export interface ProcessOptions {
    * the error immediately without spawning.
    */
   signal?: AbortSignal;
+  /**
+   * @internal Test hook — overrides the watchdog polling interval (default 5000 ms).
+   * Allows timeout tests to complete in ~1 second instead of ~5 seconds without
+   * fake timers.
+   */
+  _watchdogIntervalMs?: number;
+  /**
+   * @internal Test hook — overrides the SIGTERM → SIGKILL escalation delay
+   * (default 3000 ms). Reduces wall-clock time of SIGKILL escalation tests.
+   */
+  _sigkillDelayMs?: number;
 }

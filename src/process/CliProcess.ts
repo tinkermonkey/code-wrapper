@@ -34,8 +34,8 @@ export class CliProcess {
    * process exits (cleanly, by timeout, by abort, or by error).
    *
    * A ProgressEvent with elapsed=0 is yielded immediately on spawn. The
-   * watchdog emits further ProgressEvents every 5 seconds, giving callers a
-   * heartbeat even during long tool calls with no text output.
+   * watchdog emits further ProgressEvents every _watchdogIntervalMs (default
+   * 5 s), giving callers a heartbeat even during long tool calls.
    */
   async *run(options: ProcessOptions): AsyncGenerator<ClaudeEvent> {
     const {
@@ -44,6 +44,8 @@ export class CliProcess {
       idleTimeout = 300,
       maxTimeout = 3600,
       signal,
+      _watchdogIntervalMs = 5_000,
+      _sigkillDelayMs = 3_000,
     } = options;
 
     // Reject immediately if the signal is already cancelled — no subprocess
@@ -104,14 +106,13 @@ export class CliProcess {
       new Promise<void>(r => { queueNotify = r; });
 
     // Immediate heartbeat so callers receive a progress event at process start
-    // without waiting for the first watchdog tick (5 seconds).
+    // without waiting for the first watchdog tick.
     pushEvent({
       seq: seq++, timestamp: Date.now(), type: 'progress', elapsed: 0,
     } satisfies ProgressEvent);
 
     // Spawn errors (ENOENT, EACCES, etc.) arrive asynchronously via 'error'.
-    // Save the event so it can be yielded after the consume loop drains,
-    // regardless of whether proc.on('error') or rl.on('close') fires first.
+    // Save the event so it can be yielded after the consume loop drains.
     let spawnError: ErrorEvent | null = null;
     proc.on('error', (err: Error) => {
       spawnError = {
@@ -139,7 +140,7 @@ export class CliProcess {
       if (killedBy) return;
       killedBy = 'aborted';
       proc.kill('SIGTERM');
-      sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), 3_000);
+      sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
     };
     if (signal) {
       signal.addEventListener('abort', abortHandler);
@@ -150,7 +151,7 @@ export class CliProcess {
     }
 
     // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
-    // On timeout: SIGTERM first, SIGKILL after 3s if still alive.
+    // On timeout: SIGTERM first, SIGKILL after _sigkillDelayMs if still alive.
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (killedBy) return;
@@ -161,13 +162,13 @@ export class CliProcess {
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
         proc.kill('SIGTERM');
-        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), 3_000);
+        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
       } else if (now - startedAt > maxTimeout * 1_000) {
         killedBy = 'max';
         proc.kill('SIGTERM');
-        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), 3_000);
+        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
       }
-    }, 5_000);
+    }, _watchdogIntervalMs);
 
     const mk = (e: Omit<ClaudeEvent, 'seq' | 'timestamp'>): ClaudeEvent =>
       ({ ...e, seq: seq++, timestamp: Date.now() } as ClaudeEvent);
@@ -236,7 +237,6 @@ export class CliProcess {
         }
       }
     } catch (err) {
-      // Defensive catch — the consume loop and exit checks should not throw.
       yield mk({
         type: 'error',
         code: 'spawn_error',
@@ -281,12 +281,9 @@ export class CliProcess {
     if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
 
     if (sessionId) {
-      // --session-id: start a new session with a known, traceable ID
-      // --resume:     continue an existing session
       args.push(isFirstMessage ? '--session-id' : '--resume', sessionId);
     }
 
-    // --agent must come before the other args
     if (agent) args.unshift('--agent', agent);
 
     return args;
