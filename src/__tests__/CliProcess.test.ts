@@ -1,0 +1,220 @@
+import { beforeAll, afterAll, describe, it, expect } from 'vitest';
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { CliProcess } from '../process/CliProcess.js';
+import type { ClaudeEvent, ErrorEvent } from '../events/types.js';
+import type { ProcessOptions } from '../process/types.js';
+
+// Resolve fake binary fixture path relative to this test file.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const FAKE_CLAUDE_SRC = join(__dirname, 'fixtures', 'fake-claude.mjs');
+
+let fakeBinDir: string;
+let savedPath: string | undefined;
+
+beforeAll(() => {
+  fakeBinDir = mkdtempSync(join(tmpdir(), 'fake-claude-'));
+  const fakeBin = join(fakeBinDir, 'claude');
+  writeFileSync(fakeBin, readFileSync(FAKE_CLAUDE_SRC, 'utf-8'), 'utf-8');
+  chmodSync(fakeBin, 0o755);
+  savedPath = process.env.PATH;
+  process.env.PATH = `${fakeBinDir}:${savedPath ?? ''}`;
+});
+
+afterAll(() => {
+  if (savedPath !== undefined) {
+    process.env.PATH = savedPath;
+  } else {
+    delete process.env.PATH;
+  }
+  rmSync(fakeBinDir, { recursive: true, force: true });
+});
+
+// Collect all events from a single run.
+async function collect(
+  opts: Omit<ProcessOptions, 'cwd'> & { cwd?: string },
+): Promise<ClaudeEvent[]> {
+  const proc = new CliProcess();
+  const events: ClaudeEvent[] = [];
+  for await (const ev of proc.run({ cwd: tmpdir(), ...opts } as ProcessOptions)) {
+    events.push(ev);
+  }
+  return events;
+}
+
+const BASE: ProcessOptions = { cwd: tmpdir(), prompt: 'test' };
+
+// ---------------------------------------------------------------- golden path
+describe('golden path', () => {
+  it('emits progress, ready, text, tool_use, tool_result, done — no errors', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collect(BASE);
+    const types = events.map(e => e.type);
+    expect(types).toContain('progress');
+    expect(types).toContain('ready');
+    expect(types).toContain('text');
+    expect(types).toContain('tool_use');
+    expect(types).toContain('tool_result');
+    expect(types).toContain('done');
+    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+  });
+
+  it('first event is ProgressEvent with elapsed=0', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collect(BASE);
+    expect(events[0]).toMatchObject({ type: 'progress', elapsed: 0 });
+  });
+
+  it('ReadyEvent carries sessionId, model, and tool names', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collect(BASE);
+    expect(events.find(e => e.type === 'ready')).toMatchObject({
+      type: 'ready',
+      sessionId: 'sess-abc123',
+      model: 'claude-sonnet-4-6',
+      tools: ['Read', 'Write'],
+    });
+  });
+
+  it('DoneEvent carries sessionId and full usage including cache fields', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collect(BASE);
+    expect(events.find(e => e.type === 'done')).toMatchObject({
+      type: 'done',
+      sessionId: 'sess-abc123',
+      usage: { inputTokens: 100, outputTokens: 50, cacheReadInputTokens: 10, cacheCreationInputTokens: 5 },
+    });
+  });
+
+  it('seq values are strictly increasing', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collect(BASE);
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].seq).toBeGreaterThan(events[i - 1].seq);
+    }
+  });
+});
+
+// ---------------------------------------------------------------- other scenarios
+it('ThinkingEvent emitted from assistant thinking blocks', async () => {
+  process.env.FAKE_SCENARIO = 'thinking';
+  const events = await collect(BASE);
+  expect(events.find(e => e.type === 'thinking')).toMatchObject({
+    type: 'thinking',
+    thinking: expect.stringContaining('think'),
+  });
+});
+
+it('RetryEvent emitted on api_retry', async () => {
+  process.env.FAKE_SCENARIO = 'api-retry';
+  const events = await collect(BASE);
+  expect(events.find(e => e.type === 'retry')).toMatchObject({
+    type: 'retry',
+    attempt: 1,
+    delayMs: 500,
+    error: 'Connection reset by peer',
+  });
+});
+
+// ---------------------------------------------------------------- error paths
+it('nonzero exit → ErrorEvent { nonzero_exit, exitCode: 1 }', async () => {
+  process.env.FAKE_SCENARIO = 'nonzero-exit';
+  const events = await collect(BASE);
+  const err = events.find(e => e.type === 'error') as ErrorEvent | undefined;
+  expect(err).toMatchObject({ type: 'error', code: 'nonzero_exit', exitCode: 1 });
+});
+
+it('stale-session stderr → ErrorEvent { stale_session }', async () => {
+  process.env.FAKE_SCENARIO = 'stale-session';
+  const events = await collect(BASE);
+  expect(events.find(e => e.type === 'error')).toMatchObject({ type: 'error', code: 'stale_session' });
+});
+
+it('spawn failure (binary not in PATH) → ErrorEvent { spawn_error }', async () => {
+  const savedForTest = process.env.PATH;
+  process.env.PATH = '/no-such-directory';
+  try {
+    const events = await collect(BASE);
+    expect(events.find(e => e.type === 'error')).toMatchObject({ type: 'error', code: 'spawn_error' });
+  } finally {
+    if (savedForTest !== undefined) {
+      process.env.PATH = savedForTest;
+    } else {
+      delete process.env.PATH;
+    }
+  }
+});
+
+it('isAvailable returns true when fake binary is in PATH', async () => {
+  const proc = new CliProcess();
+  expect(await proc.isAvailable()).toBe(true);
+});
+
+// ---------------------------------------------------------------- AbortSignal
+describe('AbortSignal', () => {
+  it('pre-flight abort → single ErrorEvent { aborted } without spawning', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const controller = new AbortController();
+    controller.abort();
+    const events = await collect({ ...BASE, signal: controller.signal });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'error', code: 'aborted' });
+  });
+
+  it('mid-run abort → ErrorEvent { aborted } after some events', async () => {
+    process.env.FAKE_SCENARIO = 'stall';
+    const controller = new AbortController();
+    const proc = new CliProcess();
+    const events: ClaudeEvent[] = [];
+    for await (const ev of proc.run({
+      ...BASE,
+      signal: controller.signal,
+      _watchdogIntervalMs: 60_000, // prevent watchdog timeout during this test
+    })) {
+      events.push(ev);
+      if (ev.type === 'ready') controller.abort();
+    }
+    const err = events.find(e => e.type === 'error') as ErrorEvent | undefined;
+    expect(err).toMatchObject({ type: 'error', code: 'aborted' });
+  });
+});
+
+// ---------------------------------------------------------------- timeouts
+describe('timeouts', () => {
+  it('idle timeout → ErrorEvent { idle_timeout }', async () => {
+    process.env.FAKE_SCENARIO = 'stall';
+    const events = await collect({
+      ...BASE,
+      idleTimeout: 1,          // 1 second of silence → SIGTERM
+      _watchdogIntervalMs: 100, // poll every 100 ms so test completes ~1.1 s
+      _sigkillDelayMs: 300,    // escalate quickly
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
+  });
+
+  it('max timeout → ErrorEvent { max_timeout }', async () => {
+    process.env.FAKE_SCENARIO = 'stall';
+    const events = await collect({
+      ...BASE,
+      maxTimeout: 1,            // 1 second wall-clock ceiling
+      idleTimeout: 300,         // keep idle timeout from firing first
+      _watchdogIntervalMs: 100,
+      _sigkillDelayMs: 300,
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'max_timeout' });
+  });
+
+  it('SIGKILL escalation when process ignores SIGTERM', async () => {
+    process.env.FAKE_SCENARIO = 'ignore-sigterm';
+    const events = await collect({
+      ...BASE,
+      idleTimeout: 1,
+      _watchdogIntervalMs: 100,
+      _sigkillDelayMs: 300,     // 300 ms after SIGTERM → SIGKILL
+    });
+    // idle_timeout is still the reported code even when SIGKILL was needed
+    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
+  });
+});
