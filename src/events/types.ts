@@ -90,7 +90,8 @@ export type ErrorCode =
   | 'spawn_error'    // process could not be started
   | 'stale_session'  // stderr: "No conversation found with session ID"
   | 'parse_error'    // line starts with '{' but is not valid JSON
-  | 'cli_error';     // inline error/error_detail/error_event from the CLI stream
+  | 'cli_error'      // inline error/error_detail/error_event from the CLI stream
+  | 'aborted';       // cancelled via AbortSignal
 
 export interface ErrorEvent extends BaseEvent {
   type: 'error';

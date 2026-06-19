@@ -1,5 +1,6 @@
 // Process
 export { CliProcess } from './process/CliProcess.js';
+export { runWithRecovery } from './process/recovery.js';
 export type { CliBackend, ProcessOptions } from './process/types.js';
 
 // Events

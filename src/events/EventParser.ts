@@ -148,14 +148,42 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
     } satisfies ToolResultEvent);
 
   } else if (raw.type === 'user') {
-    // User turn events (tool results returned to the model, or human-turn content).
-    // Captured as RawEvent so the full turn is preserved. When --verbose is active
-    // the CLI also emits top-level tool_result events which are the canonical
-    // ToolResultEvent source — this RawEvent is the complement, not a duplicate.
+    // Always preserve the full user turn as RawEvent.
     events.push({
       seq: seq++, timestamp, type: 'raw',
       rawType: raw.type, data: raw as unknown,
     } satisfies RawEvent);
+
+    // Also extract any tool_result blocks as typed ToolResultEvents, so
+    // callers receive them even when --verbose top-level events are absent.
+    type UserBlock = {
+      type: string;
+      tool_use_id?: string;
+      content?: unknown;
+      is_error?: boolean;
+    };
+    const userContent = (raw as unknown as {
+      message?: { content?: UserBlock[] };
+    }).message?.content ?? [];
+
+    for (const block of userContent) {
+      if (block.type !== 'tool_result') continue;
+      let output = '';
+      if (typeof block.content === 'string') {
+        output = block.content;
+      } else if (Array.isArray(block.content)) {
+        output = (block.content as Array<{ type: string; text?: string }>)
+          .filter(c => c.type === 'text')
+          .map(c => c.text ?? '')
+          .join('');
+      }
+      events.push({
+        seq: seq++, timestamp, type: 'tool_result',
+        toolUseId: block.tool_use_id ?? '',
+        isError: block.is_error ?? false,
+        output,
+      } satisfies ToolResultEvent);
+    }
 
   } else if (raw.type === 'result') {
     const u = raw.usage;

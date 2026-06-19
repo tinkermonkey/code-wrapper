@@ -29,4 +29,13 @@ export interface ProcessOptions {
   idleTimeout?: number;
   /** Hard ceiling in seconds regardless of activity. Default: 3600 */
   maxTimeout?: number;
+  /**
+   * AbortSignal that cancels the in-flight process.
+   *
+   * On abort: the subprocess receives SIGTERM, then SIGKILL after 3 seconds if
+   * still alive. The generator yields ErrorEvent { code: 'aborted' } and stops.
+   * If the signal is already aborted when run() is called, the generator yields
+   * the error immediately without spawning.
+   */
+  signal?: AbortSignal;
 }

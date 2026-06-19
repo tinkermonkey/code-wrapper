@@ -31,10 +31,11 @@ export class CliProcess {
 
   /**
    * Spawn the CLI, deliver the prompt, and yield normalized events until the
-   * process exits (cleanly, by timeout, or by error).
+   * process exits (cleanly, by timeout, by abort, or by error).
    *
-   * ProgressEvents are emitted by the watchdog every 5 seconds regardless of
-   * stdout activity, giving callers a heartbeat during long tool calls.
+   * A ProgressEvent with elapsed=0 is yielded immediately on spawn. The
+   * watchdog emits further ProgressEvents every 5 seconds, giving callers a
+   * heartbeat even during long tool calls with no text output.
    */
   async *run(options: ProcessOptions): AsyncGenerator<ClaudeEvent> {
     const {
@@ -42,7 +43,18 @@ export class CliProcess {
       prompt,
       idleTimeout = 300,
       maxTimeout = 3600,
+      signal,
     } = options;
+
+    // Reject immediately if the signal is already cancelled — no subprocess
+    // is spawned.
+    if (signal?.aborted) {
+      yield {
+        seq: 0, timestamp: Date.now(), type: 'error', code: 'aborted',
+        detail: 'AbortSignal was already aborted before process started',
+      } satisfies ErrorEvent;
+      return;
+    }
 
     const args = this.buildArgs(options);
 
@@ -63,7 +75,7 @@ export class CliProcess {
 
     let seq = 0;
     let stderrBuf = '';
-    let killedBy: 'idle' | 'max' | null = null;
+    let killedBy: 'idle' | 'max' | 'aborted' | null = null;
     const startedAt = Date.now();
     let lastOutputAt = Date.now();
 
@@ -91,6 +103,12 @@ export class CliProcess {
     const waitForEvent = (): Promise<void> =>
       new Promise<void>(r => { queueNotify = r; });
 
+    // Immediate heartbeat so callers receive a progress event at process start
+    // without waiting for the first watchdog tick (5 seconds).
+    pushEvent({
+      seq: seq++, timestamp: Date.now(), type: 'progress', elapsed: 0,
+    } satisfies ProgressEvent);
+
     // Spawn errors (ENOENT, EACCES, etc.) arrive asynchronously via 'error'.
     // Save the event so it can be yielded after the consume loop drains,
     // regardless of whether proc.on('error') or rl.on('close') fires first.
@@ -100,10 +118,9 @@ export class CliProcess {
         seq: seq++, timestamp: Date.now(), type: 'error', code: 'spawn_error',
         detail: err.message,
       };
-      pushEvent(null); // terminate the consume loop
+      pushEvent(null);
     });
 
-    // Wire readline output into the queue
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
       lastOutputAt = Date.now();
@@ -114,10 +131,20 @@ export class CliProcess {
     });
     rl.on('close', () => pushEvent(null));
 
-    // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
-    // On timeout: SIGTERM first, SIGKILL after 3s if the process is still alive.
     let sigkillTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // AbortSignal: kill the process and mark the reason so the correct
+    // ErrorEvent is yielded after the consume loop drains.
+    const abortHandler = (): void => {
+      if (killedBy) return;
+      killedBy = 'aborted';
+      proc.kill('SIGTERM');
+      sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), 3_000);
+    };
+    if (signal) signal.addEventListener('abort', abortHandler);
+
+    // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
+    // On timeout: SIGTERM first, SIGKILL after 3s if still alive.
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (killedBy) return;
@@ -152,13 +179,15 @@ export class CliProcess {
       // we have the exit code and complete stderr before deciding what to surface.
       await exitPromise;
 
-      // Spawn error takes priority — nothing meaningful can follow a failed spawn.
+      // Exit precedence (highest to lowest):
+      //   spawn_error > stale_session > rate_limit > aborted
+      //   > idle_timeout > max_timeout > nonzero_exit > clean
+
       if (spawnError !== null) {
         yield spawnError;
         return;
       }
 
-      // Specific stderr conditions take precedence over the generic exit code.
       if (STALE_SESSION_RE.test(stderrBuf)) {
         yield mk({
           type: 'error',
@@ -174,7 +203,9 @@ export class CliProcess {
         return;
       }
 
-      if (killedBy === 'idle') {
+      if (killedBy === 'aborted') {
+        yield mk({ type: 'error', code: 'aborted', detail: 'Run cancelled via AbortSignal' });
+      } else if (killedBy === 'idle') {
         const elapsed = Math.floor((Date.now() - startedAt) / 1_000);
         yield mk({
           type: 'error',
@@ -208,6 +239,7 @@ export class CliProcess {
     } finally {
       clearInterval(watchdog);
       if (sigkillTimer !== null) clearTimeout(sigkillTimer);
+      if (signal) signal.removeEventListener('abort', abortHandler);
       this.activeProc = null;
     }
   }
