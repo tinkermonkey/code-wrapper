@@ -170,48 +170,48 @@ Covers:
 
 ---
 
-## v0.4 — GitHub Copilot backend
+## v0.4 — GitHub Copilot backend ✓
 
-This is the significant unimplemented feature. DR CLI supports Copilot
-as a drop-in alternative to Claude Code via `BaseChatClient`; the module
-must eventually do the same via `CliProcess('copilot')`.
+**Implemented.** The Copilot backend uses the **Agent Client Protocol
+(ACP)** — `copilot --acp --stdio` — which reached GA on February 25,
+2026.
 
-### Research required
+Plain-text parsing (`copilot --prompt <msg>`) was explicitly ruled out:
+GitHub built ACP as the designated machine-parseable interface, and the
+previous undocumented interface (`--headless --stdio`) was removed without
+deprecation warning (copilot-cli issue #1606), breaking all downstream
+wrappers. ACP is its stable replacement.
 
-The Copilot CLI invocation is not yet confirmed. Candidates:
+### What was built
 
-| Option | CLI form | Notes |
-|--------|----------|-------|
-| `gh copilot suggest` | `gh copilot suggest -t shell <prompt>` | Interactive; not stream-json |
-| VS Code Copilot agent mode | Extension-driven; no CLI form | Not viable |
-| GitHub Copilot Coding Agent | `gh agent run` (hypothetical) | In active development as of 2025 |
-| DR CLI's `BaseChatClient` copilot impl | Internal to DR repo | Best reference — check `06 - Projects - Professional/` |
+- `buildCopilotArgs()` — returns `['--acp', '--stdio']` plus optional
+  `--allow-all-tools`, `--agent`, `--resume=<uuid>`
+- ACP handshake in `run()` — writes `initialize` → `session/new` →
+  `session/prompt` NDJSON messages to stdin then closes; prompt is a
+  `session/prompt` params field, not a CLI flag
+- `createCopilotAcpParser()` — stateful factory (tracks `sessionUuid`
+  across lines) mapping ACP NDJSON to normalized `ClaudeEvent`s:
+  - `session/new` response (`result.sessionId`) → `ReadyEvent { sessionId }`
+  - `session/update` (type `assistant.message_delta`) → `TextEvent`
+  - `assistant.message_delta` notification → `TextEvent`
+  - `assistant.message` notification → `TextEvent`
+  - `session.idle` notification → `DoneEvent { sessionId }`
+  - `permission/request` notification → `RawEvent`
+  - ACP error response (`msg.error`) → `ErrorEvent { code: 'cli_error' }`
+  - All other responses → `RawEvent` (zero-loss)
+- `fake-copilot.mjs` — test binary speaking full NDJSON JSON-RPC; handles
+  `initialize`, `session/new`, `session/prompt`; scenarios: `golden-path`,
+  `stall`, `ignore-sigterm`, `nonzero-exit`
+- Tests — copilot golden path now verifies `ready` and `done` events (with
+  `sessionId: 'copilot-sess-abc123'`) in addition to `progress` and `text`
 
-**First step:** Read DR CLI's existing Copilot backend implementation to
-determine the exact invocation, output format, and session model before
-writing any code.
+### ACP reference
 
-### Design decisions
-
-- Does the Copilot CLI emit stream-json like Claude Code, or a different
-  format? If different, `EventParser` needs a second codepath or a
-  second parser.
-- Does Copilot have a session ID / resume concept? If not,
-  `SessionManager` works as-is but `sessionId`/`isFirstMessage` are
-  ignored.
-- Is `--permission-mode bypassPermissions` relevant to Copilot? Probably
-  not — remove from `buildArgs` for the copilot path.
-- Does Copilot need `CLAUDECODE` deletion? No — that is Anthropic-specific.
-
-### Implementation plan (after research)
-
-1. `buildArgs()` — add a `copilot` branch that constructs the `gh …`
-   invocation with the correct flags
-2. `EventParser` — extend `parseCliLine` or add `parseCopilotLine` if
-   the output format differs from stream-json
-3. `isAvailable()` — already checks for `gh`; verify `gh copilot` is
-   installed as an extension
-4. Tests — extend the integration harness with a fake `gh` binary
+- Protocol: `copilot --acp --stdio`, NDJSON JSON-RPC over stdin/stdout
+- SDK: `@github/copilot-sdk` (Node.js, GA June 2, 2026) wraps ACP with
+  typed events (`assistant.message_delta`, `session.idle`, etc.)
+- Research report:
+  `03 - Research Topics/2026-06-20 GitHub Copilot CLI Machine-Parseable Output/`
 
 ---
 
@@ -239,7 +239,7 @@ that migration.
 ### Switchyard patterns already covered
 
 | Switchyard pattern | code-wrapper equivalent |
-|----|----|
+|----|----||
 | `subprocess.Popen` + line-by-line read | `CliProcess` + readline |
 | `system/init` session capture | `ReadyEvent` |
 | `--resume <session_id>` | `ProcessOptions.sessionId + isFirstMessage: false` |
@@ -254,7 +254,7 @@ that migration.
 Gating criteria for a stable public API:
 
 - [ ] v0.2, v0.3, v0.4 milestones complete
-- [ ] Copilot backend tested against a real `gh copilot` invocation
+- [ ] Copilot backend tested against a real `copilot --acp --stdio` invocation
 - [ ] DR CLI integrated and using `@tinkermonkey/code-wrapper` instead
   of its own subprocess layer
 - [ ] Codetoreum using `@tinkermonkey/code-wrapper` (or a
@@ -271,7 +271,7 @@ Gating criteria for a stable public API:
 These will never move into this module — they are application concerns:
 
 | Concern | Why it stays in the app |
-|----|----|
+|----|----||
 | HTTP server, SSE, WebSocket | Framework choice is the app's |
 | Redis XADD / pub/sub sinks | Destination-agnostic by design |
 | OpenTelemetry spans and metrics | App observability layer |

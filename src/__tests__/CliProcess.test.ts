@@ -262,11 +262,13 @@ describe('copilot backend', () => {
     expect(await proc.isAvailable()).toBe(true);
   });
 
-  it('golden path emits progress and text events, no errors', async () => {
+  it('golden path emits progress, ready, text, and done events — no errors', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
     const events = await collectCopilot();
     expect(events.some(e => e.type === 'progress')).toBe(true);
+    expect(events.some(e => e.type === 'ready')).toBe(true);
     expect(events.some(e => e.type === 'text')).toBe(true);
+    expect(events.some(e => e.type === 'done')).toBe(true);
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
 
@@ -274,6 +276,24 @@ describe('copilot backend', () => {
     process.env.FAKE_SCENARIO = 'golden-path';
     const events = await collectCopilot();
     expect(events[0]).toMatchObject({ type: 'progress', elapsed: 0 });
+  });
+
+  it('ReadyEvent carries the ACP session ID', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collectCopilot();
+    expect(events.find(e => e.type === 'ready')).toMatchObject({
+      type: 'ready',
+      sessionId: 'copilot-sess-abc123',
+    });
+  });
+
+  it('DoneEvent carries the ACP session ID', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collectCopilot();
+    expect(events.find(e => e.type === 'done')).toMatchObject({
+      type: 'done',
+      sessionId: 'copilot-sess-abc123',
+    });
   });
 
   it('text events carry the copilot response content', async () => {

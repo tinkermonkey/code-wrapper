@@ -210,18 +210,99 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
 }
 
 /**
- * Parse one line of plain-text output from the GitHub Copilot CLI into a
- * single TextEvent.
+ * Stateful ACP parser factory for the GitHub Copilot CLI (`copilot --acp --stdio`).
  *
- * Copilot emits plain text / markdown (not stream-json), so every line —
- * including blank lines — is part of the response. Callers that want to
- * collapse consecutive blank lines should post-process the stream.
+ * Returns a closure that parses NDJSON JSON-RPC lines from the ACP protocol
+ * into normalized ClaudeEvents. Call once per CliProcess.run() invocation so
+ * all lines in a session share the same sessionUuid state.
+ *
+ * ACP notification → ClaudeEvent mapping:
+ *   session/new result (result.sessionId)  → ReadyEvent
+ *   session/update (assistant.message_delta) → TextEvent
+ *   assistant.message_delta notification    → TextEvent
+ *   assistant.message notification          → TextEvent
+ *   session.idle                            → DoneEvent
+ *   permission/request                      → RawEvent
+ *   ACP error response (msg.error)          → ErrorEvent { code: 'cli_error' }
+ *   Other responses/notifications           → RawEvent (zero-loss)
  */
-export function parseCopilotLine(line: string, nextSeq: number): ClaudeEvent[] {
-  return [{
-    seq: nextSeq,
-    timestamp: Date.now(),
-    type: 'text',
-    text: line + '\n',
-  } satisfies TextEvent];
+export function createCopilotAcpParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
+  let sessionUuid = '';
+
+  return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
+    if (!line.trim()) return [];
+    const timestamp = Date.now();
+    let seq = nextSeq;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let msg: any;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return [{ seq, timestamp, type: 'text', text: line + '\n' } satisfies TextEvent];
+    }
+
+    const events: ClaudeEvent[] = [];
+
+    // session/new response → capture UUID and emit ReadyEvent
+    if (msg.result?.sessionId) {
+      sessionUuid = msg.result.sessionId as string;
+      events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
+      return events;
+    }
+
+    // Notifications (no id field — server-push)
+    if (msg.method != null && msg.id == null) {
+      if (msg.method === 'session/update') {
+        // type: 'assistant.message_delta' carries streaming content
+        const content = (msg.params?.data?.deltaContent ?? msg.params?.content ?? '') as string;
+        if (content) events.push({ seq: seq++, timestamp, type: 'text', text: content } satisfies TextEvent);
+        return events;
+      }
+      if (msg.method === 'assistant.message_delta') {
+        const content = (msg.params?.data?.deltaContent ?? '') as string;
+        if (content) events.push({ seq: seq++, timestamp, type: 'text', text: content } satisfies TextEvent);
+        return events;
+      }
+      if (msg.method === 'assistant.message') {
+        const content = (msg.params?.content ?? msg.params?.data?.content ?? '') as string;
+        if (content) events.push({ seq: seq++, timestamp, type: 'text', text: content } satisfies TextEvent);
+        return events;
+      }
+      if (msg.method === 'session.idle') {
+        events.push({ seq: seq++, timestamp, type: 'done', sessionId: sessionUuid } satisfies DoneEvent);
+        return events;
+      }
+      if (msg.method === 'permission/request') {
+        events.push({
+          seq: seq++, timestamp, type: 'raw',
+          rawType: 'permission/request', data: msg as unknown,
+        } satisfies RawEvent);
+        return events;
+      }
+      events.push({
+        seq: seq++, timestamp, type: 'raw',
+        rawType: msg.method as string, data: msg as unknown,
+      } satisfies RawEvent);
+      return events;
+    }
+
+    // Error responses
+    if (msg.error) {
+      const detail = (msg.error.message as string | undefined)
+        ?? `ACP error (code ${msg.error.code as number | undefined})`;
+      events.push({ seq: seq++, timestamp, type: 'error', code: 'cli_error', detail } satisfies ErrorEvent);
+      return events;
+    }
+
+    // Other responses (initialize ack, session/prompt ack, etc.)
+    if (msg.id !== undefined) {
+      events.push({
+        seq: seq++, timestamp, type: 'raw',
+        rawType: 'acp/response', data: msg as unknown,
+      } satisfies RawEvent);
+      return events;
+    }
+
+    return events;
+  };
 }

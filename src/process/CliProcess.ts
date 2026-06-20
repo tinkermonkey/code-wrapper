@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, ErrorEvent, ProgressEvent } from '../events/types.js';
-import { parseCliLine, parseCopilotLine } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
@@ -14,7 +14,9 @@ const STALE_SESSION_RE = /no conversation found with session id/i;
  * prompt, and yields a normalized stream of ClaudeEvents.
  *
  * Claude Code: prompt via stdin; stream-json output parsed into typed events.
- * Copilot: prompt via --prompt flag; plain-text output wrapped as TextEvents.
+ * Copilot: ACP protocol (copilot --acp --stdio); NDJSON JSON-RPC over
+ *   stdin/stdout; initialize → session/new → session/prompt handshake;
+ *   stateful parser produced by createCopilotAcpParser() tracks sessionUuid.
  *
  * The caller is responsible for routing events — this class has no opinion
  * on whether they go to a WebSocket, Redis, SSE response, or an in-process
@@ -76,10 +78,17 @@ export class CliProcess {
 
     this.activeProc = proc;
 
-    // Claude Code reads the prompt from stdin; Copilot receives it via the
-    // --prompt flag in buildCopilotArgs(). In both cases we close stdin
-    // immediately so the subprocess is not blocked waiting for more input.
-    if (this.backend !== 'copilot') {
+    if (this.backend === 'copilot') {
+      // ACP handshake: write NDJSON JSON-RPC messages to stdin then close.
+      // The server responds to each over stdout; the readline handler below
+      // parses them via createCopilotAcpParser().
+      const acpWrite = (msg: object): void => {
+        proc.stdin!.write(JSON.stringify(msg) + '\n');
+      };
+      acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-01', capabilities: {} } });
+      acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
+      acpWrite({ jsonrpc: '2.0', id: 3, method: 'session/prompt', params: { prompt } });
+    } else {
       proc.stdin!.write(prompt);
     }
     proc.stdin!.end();
@@ -131,9 +140,9 @@ export class CliProcess {
       pushEvent(null);
     });
 
-    // Choose parser based on backend: Copilot emits plain text; Claude emits
-    // stream-json.
-    const parseLine = this.backend === 'copilot' ? parseCopilotLine : parseCliLine;
+    // Copilot: stateful ACP parser tracks sessionUuid across lines.
+    // Claude: stateless parseCliLine.
+    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
@@ -303,25 +312,21 @@ export class CliProcess {
   }
 
   /**
-   * Build args for the GitHub Copilot CLI (`copilot` npm package).
+   * Build args for the GitHub Copilot CLI (`copilot` npm package) in ACP mode.
    *
-   * Invocation pattern (from DR CLI's BaseChatClient/CopilotClient reference):
-   *   First message:       copilot --prompt <msg> [--agent <name>] [--allow-all-tools]
-   *   Subsequent messages: copilot --continue --prompt <msg> [--allow-all-tools]
+   * Invocation: copilot --acp --stdio
+   * The prompt is NOT passed as a flag — it is sent as a session/prompt
+   * NDJSON message over stdin in run() after the initialize/session/new handshake.
    *
-   * Key differences from Claude Code:
-   * - Prompt is a CLI flag, not stdin
-   * - Multi-turn uses --continue (no explicit session IDs)
-   * - Permission bypass is --allow-all-tools, not --permission-mode bypassPermissions
-   * - No --output-format, --mcp-config, --verbose, or --print flags
+   * Session resume: --resume=<uuid> (the UUID comes from the ReadyEvent.sessionId
+   * produced by the session/new response on the first message).
    */
   private buildCopilotArgs(options: ProcessOptions): string[] {
-    const { prompt, skipPermissions = false, agent, isFirstMessage = true } = options;
-    const args: string[] = [];
-    if (!isFirstMessage) args.push('--continue');
-    args.push('--prompt', prompt);
-    if (isFirstMessage && agent) args.push('--agent', agent);
+    const { sessionId, isFirstMessage = true, skipPermissions = false, agent } = options;
+    const args = ['--acp', '--stdio'];
     if (skipPermissions) args.push('--allow-all-tools');
+    if (agent) args.push('--agent', agent);
+    if (sessionId && !isFirstMessage) args.push(`--resume=${sessionId}`);
     return args;
   }
 }
