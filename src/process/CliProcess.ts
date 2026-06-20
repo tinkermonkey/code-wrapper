@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, ErrorEvent, ProgressEvent } from '../events/types.js';
-import { parseCliLine } from '../events/EventParser.js';
+import { parseCliLine, parseCopilotLine } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
@@ -11,7 +11,10 @@ const STALE_SESSION_RE = /no conversation found with session id/i;
 
 /**
  * Spawns an AI coding agent CLI (Claude Code or GitHub Copilot), delivers a
- * prompt via stdin, and yields a normalized stream of ClaudeEvents.
+ * prompt, and yields a normalized stream of ClaudeEvents.
+ *
+ * Claude Code: prompt via stdin; stream-json output parsed into typed events.
+ * Copilot: prompt via --prompt flag; plain-text output wrapped as TextEvents.
  *
  * The caller is responsible for routing events — this class has no opinion
  * on whether they go to a WebSocket, Redis, SSE response, or an in-process
@@ -24,7 +27,7 @@ export class CliProcess {
 
   /** Returns true if the backend binary is found in PATH */
   async isAvailable(): Promise<boolean> {
-    const bin = this.backend === 'claude' ? 'claude' : 'gh';
+    const bin = this.backend === 'claude' ? 'claude' : 'copilot';
     const r = spawnSync('which', [bin], { stdio: 'pipe' });
     return r.status === 0;
   }
@@ -66,13 +69,19 @@ export class CliProcess {
     delete env['CLAUDECODE'];
 
     const proc = spawn(
-      this.backend === 'claude' ? 'claude' : 'gh',
+      this.backend === 'claude' ? 'claude' : 'copilot',
       args,
       { cwd, stdio: ['pipe', 'pipe', 'pipe'], env },
     );
 
     this.activeProc = proc;
-    proc.stdin!.write(prompt);
+
+    // Claude Code reads the prompt from stdin; Copilot receives it via the
+    // --prompt flag in buildCopilotArgs(). In both cases we close stdin
+    // immediately so the subprocess is not blocked waiting for more input.
+    if (this.backend !== 'copilot') {
+      proc.stdin!.write(prompt);
+    }
     proc.stdin!.end();
 
     let seq = 0;
@@ -122,10 +131,14 @@ export class CliProcess {
       pushEvent(null);
     });
 
+    // Choose parser based on backend: Copilot emits plain text; Claude emits
+    // stream-json.
+    const parseLine = this.backend === 'copilot' ? parseCopilotLine : parseCliLine;
+
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
       lastOutputAt = Date.now();
-      for (const event of parseCliLine(line, seq)) {
+      for (const event of parseLine(line, seq)) {
         seq = event.seq + 1;
         pushEvent(event);
       }
@@ -264,7 +277,7 @@ export class CliProcess {
 
   private buildArgs(options: ProcessOptions): string[] {
     if (this.backend === 'copilot') {
-      throw new Error('Copilot backend is not yet implemented');
+      return this.buildCopilotArgs(options);
     }
 
     const {
@@ -286,6 +299,29 @@ export class CliProcess {
 
     if (agent) args.unshift('--agent', agent);
 
+    return args;
+  }
+
+  /**
+   * Build args for the GitHub Copilot CLI (`copilot` npm package).
+   *
+   * Invocation pattern (from DR CLI's BaseChatClient/CopilotClient reference):
+   *   First message:       copilot --prompt <msg> [--agent <name>] [--allow-all-tools]
+   *   Subsequent messages: copilot --continue --prompt <msg> [--allow-all-tools]
+   *
+   * Key differences from Claude Code:
+   * - Prompt is a CLI flag, not stdin
+   * - Multi-turn uses --continue (no explicit session IDs)
+   * - Permission bypass is --allow-all-tools, not --permission-mode bypassPermissions
+   * - No --output-format, --mcp-config, --verbose, or --print flags
+   */
+  private buildCopilotArgs(options: ProcessOptions): string[] {
+    const { prompt, skipPermissions = false, agent, isFirstMessage = true } = options;
+    const args: string[] = [];
+    if (!isFirstMessage) args.push('--continue');
+    args.push('--prompt', prompt);
+    if (isFirstMessage && agent) args.push('--agent', agent);
+    if (skipPermissions) args.push('--allow-all-tools');
     return args;
   }
 }

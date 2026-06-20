@@ -208,3 +208,20 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
 
   return events;
 }
+
+/**
+ * Parse one line of plain-text output from the GitHub Copilot CLI into a
+ * single TextEvent.
+ *
+ * Copilot emits plain text / markdown (not stream-json), so every line —
+ * including blank lines — is part of the response. Callers that want to
+ * collapse consecutive blank lines should post-process the stream.
+ */
+export function parseCopilotLine(line: string, nextSeq: number): ClaudeEvent[] {
+  return [{
+    seq: nextSeq,
+    timestamp: Date.now(),
+    type: 'text',
+    text: line + '\n',
+  } satisfies TextEvent];
+}

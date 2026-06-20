@@ -4,12 +4,13 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CliProcess } from '../process/CliProcess.js';
-import type { ClaudeEvent, ErrorEvent } from '../events/types.js';
+import type { ClaudeEvent, ErrorEvent, TextEvent } from '../events/types.js';
 import type { ProcessOptions } from '../process/types.js';
 
-// Resolve fake binary fixture path relative to this test file.
+// Resolve fake binary fixture paths relative to this test file.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLAUDE_SRC = join(__dirname, 'fixtures', 'fake-claude.mjs');
+const FAKE_COPILOT_SRC = join(__dirname, 'fixtures', 'fake-copilot.mjs');
 
 let fakeBinDir: string;
 let savedPath: string | undefined;
@@ -220,6 +221,104 @@ describe('timeouts', () => {
       _sigkillDelayMs: 300,     // 300 ms after SIGTERM → SIGKILL
     });
     // idle_timeout is still the reported code even when SIGKILL was needed
+    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
+  });
+});
+
+// ---------------------------------------------------------------- copilot backend
+describe('copilot backend', () => {
+  let copilotBinDir: string;
+  let pathBeforeCopilot: string | undefined;
+
+  beforeAll(() => {
+    copilotBinDir = mkdtempSync(join(tmpdir(), 'fake-copilot-'));
+    const fakeBin = join(copilotBinDir, 'copilot');
+    writeFileSync(fakeBin, readFileSync(FAKE_COPILOT_SRC, 'utf-8'), 'utf-8');
+    chmodSync(fakeBin, 0o755);
+    pathBeforeCopilot = process.env.PATH;
+    process.env.PATH = `${copilotBinDir}:${pathBeforeCopilot ?? ''}`;
+  });
+
+  afterAll(() => {
+    if (pathBeforeCopilot !== undefined) {
+      process.env.PATH = pathBeforeCopilot;
+    } else {
+      delete process.env.PATH;
+    }
+    rmSync(copilotBinDir, { recursive: true, force: true });
+  });
+
+  async function collectCopilot(extra: Partial<ProcessOptions> = {}): Promise<ClaudeEvent[]> {
+    const proc = new CliProcess('copilot');
+    const events: ClaudeEvent[] = [];
+    for await (const ev of proc.run({ ...BASE, ...extra })) {
+      events.push(ev);
+    }
+    return events;
+  }
+
+  it('isAvailable returns true when fake copilot binary is in PATH', async () => {
+    const proc = new CliProcess('copilot');
+    expect(await proc.isAvailable()).toBe(true);
+  });
+
+  it('golden path emits progress and text events, no errors', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collectCopilot();
+    expect(events.some(e => e.type === 'progress')).toBe(true);
+    expect(events.some(e => e.type === 'text')).toBe(true);
+    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+  });
+
+  it('first event is ProgressEvent with elapsed=0', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collectCopilot();
+    expect(events[0]).toMatchObject({ type: 'progress', elapsed: 0 });
+  });
+
+  it('text events carry the copilot response content', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collectCopilot();
+    const text = events
+      .filter(e => e.type === 'text')
+      .map(e => (e as TextEvent).text)
+      .join('');
+    expect(text).toContain('Hello from Copilot!');
+  });
+
+  it('seq values are strictly increasing', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collectCopilot();
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].seq).toBeGreaterThan(events[i - 1].seq);
+    }
+  });
+
+  it('nonzero exit → ErrorEvent { nonzero_exit, exitCode: 1 }', async () => {
+    process.env.FAKE_SCENARIO = 'nonzero-exit';
+    const events = await collectCopilot();
+    expect(events.find(e => e.type === 'error')).toMatchObject({
+      type: 'error', code: 'nonzero_exit', exitCode: 1,
+    });
+  });
+
+  it('idle timeout → ErrorEvent { idle_timeout }', async () => {
+    process.env.FAKE_SCENARIO = 'stall';
+    const events = await collectCopilot({
+      idleTimeout: 1,
+      _watchdogIntervalMs: 100,
+      _sigkillDelayMs: 300,
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
+  });
+
+  it('SIGKILL escalation when copilot ignores SIGTERM', async () => {
+    process.env.FAKE_SCENARIO = 'ignore-sigterm';
+    const events = await collectCopilot({
+      idleTimeout: 1,
+      _watchdogIntervalMs: 100,
+      _sigkillDelayMs: 300,
+    });
     expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
   });
 });
