@@ -25,7 +25,7 @@
   "files": ["dist", "src", "ARCHITECTURE.md"],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare": "npm run build"

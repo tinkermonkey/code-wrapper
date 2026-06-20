@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, describe, it, expect } from 'vitest';
+import { beforeAll, afterAll, afterEach, describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync, chmodSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -32,13 +32,17 @@ afterAll(() => {
   rmSync(fakeBinDir, { recursive: true, force: true });
 });
 
+// Reset FAKE_SCENARIO after every test so tests that don't set it explicitly
+// don't silently inherit a stale value from the previous test.
+afterEach(() => {
+  delete process.env.FAKE_SCENARIO;
+});
+
 // Collect all events from a single run.
-async function collect(
-  opts: Omit<ProcessOptions, 'cwd'> & { cwd?: string },
-): Promise<ClaudeEvent[]> {
+async function collect(opts: ProcessOptions): Promise<ClaudeEvent[]> {
   const proc = new CliProcess();
   const events: ClaudeEvent[] = [];
-  for await (const ev of proc.run({ cwd: tmpdir(), ...opts } as ProcessOptions)) {
+  for await (const ev of proc.run(opts)) {
     events.push(ev);
   }
   return events;
@@ -171,7 +175,8 @@ describe('AbortSignal', () => {
     for await (const ev of proc.run({
       ...BASE,
       signal: controller.signal,
-      _watchdogIntervalMs: 60_000, // prevent watchdog timeout during this test
+      _watchdogIntervalMs: 60_000, // prevent watchdog from firing
+      _sigkillDelayMs: 300,        // fast SIGKILL escalation if SIGTERM ignored
     })) {
       events.push(ev);
       if (ev.type === 'ready') controller.abort();
@@ -187,9 +192,9 @@ describe('timeouts', () => {
     process.env.FAKE_SCENARIO = 'stall';
     const events = await collect({
       ...BASE,
-      idleTimeout: 1,          // 1 second of silence → SIGTERM
+      idleTimeout: 1,           // 1 second of silence → SIGTERM
       _watchdogIntervalMs: 100, // poll every 100 ms so test completes ~1.1 s
-      _sigkillDelayMs: 300,    // escalate quickly
+      _sigkillDelayMs: 300,
     });
     expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
   });

@@ -72,8 +72,6 @@ describe('SessionManager', () => {
 
   describe('listSessions + namespace', () => {
     it('returns only sessions belonging to this namespace', () => {
-      // Each SessionManager gets its own in-memory store.
-      // Use a shared file store to test cross-namespace isolation.
       const dir = mkdtempSync(join(tmpdir(), 'sm-ns-'));
       const path = join(dir, 'sessions.json');
       try {
@@ -100,7 +98,8 @@ describe('SessionManager', () => {
     it('returns sessions sorted by lastActiveAt descending', async () => {
       const mgr = new SessionManager();
       mgr.newSession('old');
-      await new Promise(r => setTimeout(r, 15));
+      // 50 ms gap ensures distinct ISO timestamps even on loaded CI runners
+      await new Promise(r => setTimeout(r, 50));
       mgr.newSession('new');
       const list = mgr.listSessions();
       expect(list[0].key).toContain('new');
@@ -144,9 +143,8 @@ describe('createSessionStore (MemoryStore)', () => {
 describe('createSessionStore (FileStore)', () => {
   it('starts empty when the file does not exist', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fs-test-'));
-    const path = join(dir, 'sub', 'sessions.json'); // sub-dir not created yet
     try {
-      const store = createSessionStore(path);
+      const store = createSessionStore(join(dir, 'sub', 'sessions.json'));
       expect(store.all()).toHaveLength(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -155,8 +153,8 @@ describe('createSessionStore (FileStore)', () => {
 
   it('persists sessions across store instances (atomic write)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fs-test-'));
-    const path = join(dir, 'sessions.json');
     try {
+      const path = join(dir, 'sessions.json');
       const s1 = createSessionStore(path);
       s1.set({ key: 'k', createdAt: 'now', lastActiveAt: 'now', isFirst: true });
       const s2 = createSessionStore(path);
@@ -168,8 +166,8 @@ describe('createSessionStore (FileStore)', () => {
 
   it('delete is reflected after re-load', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fs-test-'));
-    const path = join(dir, 'sessions.json');
     try {
+      const path = join(dir, 'sessions.json');
       const s1 = createSessionStore(path);
       s1.set({ key: 'k', createdAt: 'now', lastActiveAt: 'now', isFirst: true });
       s1.delete('k');
@@ -181,13 +179,11 @@ describe('createSessionStore (FileStore)', () => {
   });
 
   it('flush propagates write errors (read-only directory)', () => {
-    // Not testable as root or on Windows where chmod has no effect.
     if (process.platform === 'win32' || process.getuid?.() === 0) return;
     const readonlyDir = mkdtempSync(join(tmpdir(), 'fs-ro-'));
     chmodSync(readonlyDir, 0o555);
-    const path = join(readonlyDir, 'sessions.json');
-    const store = createSessionStore(path);
     try {
+      const store = createSessionStore(join(readonlyDir, 'sessions.json'));
       expect(() =>
         store.set({ key: 'k', createdAt: 'now', lastActiveAt: 'now', isFirst: true })
       ).toThrow();
