@@ -4,10 +4,11 @@
  * Reads NDJSON JSON-RPC from stdin, writes NDJSON responses to stdout.
  *
  * Scenarios (FAKE_SCENARIO env var):
- *   golden-path    full handshake + two message_delta chunks + session.idle
- *   stall          full handshake + one message_delta, then stalls; exits on SIGTERM
- *   ignore-sigterm full handshake + one message_delta, then stalls; ignores SIGTERM
- *   nonzero-exit   full handshake, then exits with code 1
+ *   golden-path        full handshake + two message_delta chunks + session.idle
+ *   stall              full handshake + one message_delta, then stalls; exits on SIGTERM
+ *   ignore-sigterm     full handshake + one message_delta, then stalls; ignores SIGTERM
+ *   nonzero-exit       full handshake, then exits with code 1
+ *   permission-request full handshake + permission/request notification + normal completion
  */
 import { createInterface } from 'node:readline';
 
@@ -55,6 +56,12 @@ if (promptReceived && scenario !== 'stall' && scenario !== 'ignore-sigterm') {
     case 'golden-path': {
       emit({ jsonrpc: '2.0', method: 'session/update', params: { type: 'assistant.message_delta', data: { deltaContent: 'Hello from Copilot!\n' } } });
       emit({ jsonrpc: '2.0', method: 'session/update', params: { type: 'assistant.message_delta', data: { deltaContent: 'Here is the answer.\n' } } });
+      emit({ jsonrpc: '2.0', method: 'session.idle', params: { sessionId: SESSION_ID } });
+      break;
+    }
+    case 'permission-request': {
+      emit({ jsonrpc: '2.0', method: 'permission/request', params: { tool: 'bash', command: 'ls .' } });
+      emit({ jsonrpc: '2.0', method: 'session/update', params: { type: 'assistant.message_delta', data: { deltaContent: 'Done.\n' } } });
       emit({ jsonrpc: '2.0', method: 'session.idle', params: { sessionId: SESSION_ID } });
       break;
     }

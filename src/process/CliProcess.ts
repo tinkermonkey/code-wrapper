@@ -211,6 +211,11 @@ export class CliProcess {
       // Exit precedence (highest to lowest):
       //   spawn_error > stale_session > rate_limit > aborted
       //   > idle_timeout > max_timeout > nonzero_exit > clean
+      //
+      // ACP caveat: STALE_SESSION_RE and RATE_LIMIT_RE scan stderr only.
+      // Copilot (ACP mode) surfaces stale sessions and rate limits as JSON-RPC
+      // error responses on stdout — they arrive as ErrorEvent { code: 'cli_error' }.
+      // runWithRecovery() will not auto-retry them; callers must inspect detail.
 
       if (spawnError !== null) {
         yield spawnError;

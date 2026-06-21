@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CliProcess } from '../process/CliProcess.js';
-import type { ClaudeEvent, ErrorEvent, TextEvent } from '../events/types.js';
+import type { ClaudeEvent, ErrorEvent, TextEvent, RawEvent } from '../events/types.js';
 import type { ProcessOptions } from '../process/types.js';
 
 // Resolve fake binary fixture paths relative to this test file.
@@ -332,6 +332,17 @@ describe('copilot backend', () => {
     expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
   });
 
+  it('max timeout → ErrorEvent { max_timeout }', async () => {
+    process.env.FAKE_SCENARIO = 'stall';
+    const events = await collectCopilot({
+      maxTimeout: 1,
+      idleTimeout: 300,
+      _watchdogIntervalMs: 100,
+      _sigkillDelayMs: 300,
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'max_timeout' });
+  });
+
   it('SIGKILL escalation when copilot ignores SIGTERM', async () => {
     process.env.FAKE_SCENARIO = 'ignore-sigterm';
     const events = await collectCopilot({
@@ -340,5 +351,34 @@ describe('copilot backend', () => {
       _sigkillDelayMs: 300,
     });
     expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
+  });
+
+  it('AbortSignal mid-run → ErrorEvent { aborted }', async () => {
+    process.env.FAKE_SCENARIO = 'stall';
+    const controller = new AbortController();
+    const proc = new CliProcess('copilot');
+    const events: ClaudeEvent[] = [];
+    for await (const ev of proc.run({
+      ...BASE,
+      signal: controller.signal,
+      _watchdogIntervalMs: 60_000,
+      _sigkillDelayMs: 300,
+    })) {
+      events.push(ev);
+      if (ev.type === 'ready') controller.abort();
+    }
+    expect(events.find(e => e.type === 'error')).toMatchObject({ type: 'error', code: 'aborted' });
+  });
+
+  it('permission/request notification → RawEvent', async () => {
+    process.env.FAKE_SCENARIO = 'permission-request';
+    const events = await collectCopilot();
+    const raw = events
+      .filter(e => e.type === 'raw')
+      .find(e => (e as RawEvent).rawType === 'permission/request') as RawEvent | undefined;
+    expect(raw).toBeDefined();
+    expect(raw).toMatchObject({ type: 'raw', rawType: 'permission/request' });
+    expect(events.some(e => e.type === 'done')).toBe(true);
+    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
 });

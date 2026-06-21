@@ -89,6 +89,11 @@ On `stale_session`: calls `sessions.clearSession(key)` and retries once
 with `sessionId: undefined, isFirstMessage: true`. Does not retry a
 second stale_session error.
 
+**ACP note:** `runWithRecovery` works for Claude Code only. Copilot (ACP
+mode) surfaces stale sessions as `ErrorEvent { code: 'cli_error' }` (via
+JSON-RPC error response on stdout, not stderr). ACP-aware recovery needs
+to inspect `ErrorEvent.detail` for the error discriminator.
+
 ### `user` turn ToolResultEvent extraction
 
 **Why:** Currently `user` turn events are captured as `RawEvent`.
@@ -190,7 +195,8 @@ wrappers. ACP is its stable replacement.
   `session/prompt` NDJSON messages to stdin then closes; prompt is a
   `session/prompt` params field, not a CLI flag
 - `createCopilotAcpParser()` — stateful factory (tracks `sessionUuid`
-  across lines) mapping ACP NDJSON to normalized `ClaudeEvent`s:
+  across lines, fires `ReadyEvent` at most once per session) mapping ACP
+  NDJSON to normalized `ClaudeEvent`s:
   - `session/new` response (`result.sessionId`) → `ReadyEvent { sessionId }`
   - `session/update` (type `assistant.message_delta`) → `TextEvent`
   - `assistant.message_delta` notification → `TextEvent`
@@ -201,9 +207,17 @@ wrappers. ACP is its stable replacement.
   - All other responses → `RawEvent` (zero-loss)
 - `fake-copilot.mjs` — test binary speaking full NDJSON JSON-RPC; handles
   `initialize`, `session/new`, `session/prompt`; scenarios: `golden-path`,
-  `stall`, `ignore-sigterm`, `nonzero-exit`
-- Tests — copilot golden path now verifies `ready` and `done` events (with
-  `sessionId: 'copilot-sess-abc123'`) in addition to `progress` and `text`
+  `stall`, `ignore-sigterm`, `nonzero-exit`, `permission-request`
+- Tests (13 total) — `ready`/`done` events with session ID, AbortSignal
+  mid-run, max timeout, permission/request → RawEvent, idle timeout,
+  SIGKILL escalation, nonzero exit
+
+### ACP error handling note
+
+ACP stale-session and rate-limit conditions arrive as JSON-RPC error
+responses on stdout, not stderr. They surface as `ErrorEvent { code:
+'cli_error' }`. The stderr-based `STALE_SESSION_RE` / `RATE_LIMIT_RE`
+checks and `runWithRecovery()` do not apply to ACP mode.
 
 ### ACP reference
 

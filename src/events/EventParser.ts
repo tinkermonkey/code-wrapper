@@ -243,8 +243,11 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
 
     const events: ClaudeEvent[] = [];
 
-    // session/new response → capture UUID and emit ReadyEvent
-    if (msg.result?.sessionId) {
+    // session/new response → capture UUID and emit ReadyEvent.
+    // Guard with !sessionUuid so this fires at most once per session: prevents
+    // a double ReadyEvent if a future ACP version returns sessionId in other
+    // responses, and prevents overwriting the captured UUID on a resumed session.
+    if (msg.result?.sessionId && !sessionUuid) {
       sessionUuid = msg.result.sessionId as string;
       events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
       return events;
@@ -254,7 +257,7 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
     if (msg.method != null && msg.id == null) {
       if (msg.method === 'session/update') {
         // type: 'assistant.message_delta' carries streaming content
-        const content = (msg.params?.data?.deltaContent ?? msg.params?.content ?? '') as string;
+        const content = (msg.params?.data?.deltaContent ?? '') as string;
         if (content) events.push({ seq: seq++, timestamp, type: 'text', text: content } satisfies TextEvent);
         return events;
       }
