@@ -1665,3 +1665,584 @@ and the repository exists.; will mount base clone directly
 2026-06-27 21:20:15,347 - __main__ - INFO - Result summary: success=True, agent_calls=4, duration=103.2s
 2026-06-27 21:20:15,347 - __main__ - INFO - Repair cycle succeeded - all tests passed!
 2026-06-27 21:20:15,347 - __main__ - INFO - Repair cycle container runner exiting
+2026-06-27 21:28:56,097 - __main__ - INFO - Logging to /workspace/code-wrapper/.repair_cycle.log
+2026-06-27 21:28:56,097 - __main__ - INFO - ================================================================================
+2026-06-27 21:28:56,097 - __main__ - INFO - Repair Cycle Container Runner Starting
+2026-06-27 21:28:56,097 - __main__ - INFO - Project: code-wrapper
+2026-06-27 21:28:56,097 - __main__ - INFO - Issue: 6
+2026-06-27 21:28:56,097 - __main__ - INFO - Pipeline Run: cf065526-de40-4fa2-b6e0-6c110ed22d8f
+2026-06-27 21:28:56,097 - __main__ - INFO - ================================================================================
+2026-06-27 21:28:56,097 - __main__ - INFO - Loading context from /workspace/switchyard/orchestrator_data/repair_cycles/code-wrapper/6/context.json
+2026-06-27 21:28:56,097 - __main__ - INFO - Context loaded: project=code-wrapper, issue=6
+2026-06-27 21:28:56,364 - services.circuit_breaker - INFO - Circuit breaker 'Testing' initialized: failure_threshold=3, recovery_timeout=600s, state=closed
+2026-06-27 21:28:56,364 - __main__ - INFO - Stage initialized: 4 test types, agent=senior_software_engineer
+2026-06-27 21:28:56,366 - monitoring.observability - INFO - Observability manager connected to Redis at redis:6379
+2026-06-27 21:28:56,366 - monitoring.observability - INFO - Observability manager connected to Elasticsearch at http://elasticsearch:9200
+2026-06-27 21:28:56,367 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/_ilm/policy/decision-events-ilm-policy [status:200 duration:0.001s]
+2026-06-27 21:28:56,367 - monitoring.observability - INFO - Created/updated ILM policy: decision-events-ilm-policy (7-day retention)
+2026-06-27 21:28:56,372 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/_index_template/decision-events-template [status:200 duration:0.004s]
+2026-06-27 21:28:56,372 - monitoring.observability - INFO - Created/updated index template: decision-events-template
+2026-06-27 21:28:56,372 - __main__ - INFO - Observability manager initialized and added to context
+2026-06-27 21:28:56,372 - pipeline.repair_cycle_checkpoint - WARNING - Primary checkpoint invalid, trying backup...
+2026-06-27 21:28:56,372 - pipeline.repair_cycle_checkpoint - INFO - No valid checkpoint found
+2026-06-27 21:28:56,372 - pipeline.repair_cycle_checkpoint - INFO - Checkpoint saved: iteration=0, test_type=compilation, agent_calls=0
+2026-06-27 21:28:56,372 - __main__ - INFO - Startup checkpoint written
+2026-06-27 21:28:56,372 - __main__ - INFO - Starting repair cycle execution...
+2026-06-27 21:28:56,372 - pipeline.repair_cycle - INFO - Starting repair cycle stage: Testing
+2026-06-27 21:28:56,376 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/d242c1c6-7e0d-47df-abb3-2b15a5371531 [status:201 duration:0.003s]
+2026-06-27 21:28:56,376 - monitoring.observability - INFO - Indexed agent lifecycle event task_received to agent-events-2026-06-27
+2026-06-27 21:28:56,387 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/71bbe134-5e71-45c0-9eeb-d240e9c7a325 [status:201 duration:0.010s]
+2026-06-27 21:28:56,387 - monitoring.observability - INFO - Indexed agent lifecycle event agent_initialized to agent-events-2026-06-27
+2026-06-27 21:28:56,391 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/d00a0368-3ac8-4c7b-99c9-a38eac745497 [status:201 duration:0.003s]
+2026-06-27 21:28:56,391 - monitoring.observability - INFO - Indexed decision event repair_cycle_started to decision-events-2026-06-27
+2026-06-27 21:28:56,391 - pipeline.repair_cycle - INFO - Starting compilation test cycle (test type 1/4)
+2026-06-27 21:28:56,395 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/0b04334c-deff-4207-823a-da2b68185262 [status:201 duration:0.003s]
+2026-06-27 21:28:56,395 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_started to decision-events-2026-06-27
+2026-06-27 21:28:56,396 - pipeline.repair_cycle - INFO - Test cycle iteration 1/5 for compilation (test type 1/4)
+2026-06-27 21:28:56,400 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/36f659b5-7ce3-440b-a31c-7b079f497da7 [status:201 duration:0.003s]
+2026-06-27 21:28:56,400 - monitoring.observability - INFO - Indexed decision event repair_cycle_iteration to decision-events-2026-06-27
+2026-06-27 21:28:56,400 - pipeline.repair_cycle - INFO - Running compilation tests (test cycle iteration 1/5, test type 1)
+2026-06-27 21:28:56,403 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/ede33cf8-b23b-4826-ac81-af7601e2295b [status:201 duration:0.003s]
+2026-06-27 21:28:56,403 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_started to decision-events-2026-06-27
+2026-06-27 21:28:56,440 - services.project_workspace - INFO - Detected container environment, using /workspace
+2026-06-27 21:28:56,440 - services.project_workspace - INFO - ProjectWorkspaceManager initialized with workspace root: /workspace
+2026-06-27 21:28:56,443 - services.dev_container_state - INFO - DevContainerStateManager initialized with state_dir: /app/state/dev_containers
+2026-06-27 21:28:56,476 - services.work_execution_state - INFO - WorkExecutionStateTracker initialized with state_dir: /app/state/execution_history
+2026-06-27 21:28:56,481 - services.work_execution_state - INFO - Recorded execution start: code-wrapper/#6 senior_software_engineer in Testing (trigger: repair_cycle_test)
+2026-06-27 21:28:56,481 - services.agent_executor - INFO - Executing agent senior_software_engineer for project code-wrapper (task_id: 71307602-3bc5-47d1-8254-b536ffb6fb03)
+2026-06-27 21:28:56,485 - services.agent_executor - INFO - [DIAGNOSTIC] Extracted pipeline_run_id from task_context: cf065526-de40-4fa2-b6e0-6c110ed22d8f (type: <class 'str'>)
+2026-06-27 21:28:56,485 - services.agent_executor - INFO - [DIAGNOSTIC] Full task_context keys: ['project', 'board', 'pipeline', 'repository', 'issue_number', 'issue', 'previous_stage_output', 'column', 'workspace_type', 'discussion_id', 'pipeline_run_id', 'project_dir', 'use_docker', 'task_id', 'test_configs', 'agent_name', 'max_total_agent_calls', 'checkpoint_interval', 'stage_name', 'observability', 'cycle_stack', 'task_description', 'skip_workspace_prep', 'review_cycle', 'direct_prompt', 'execution_type']
+2026-06-27 21:28:56,489 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/bc95430b-73d7-46d5-87c4-c6b13af1146b [status:201 duration:0.003s]
+2026-06-27 21:28:56,489 - monitoring.observability - INFO - Indexed agent lifecycle event task_received to agent-events-2026-06-27
+2026-06-27 21:28:56,513 - services.agent_executor - INFO - Agent senior_software_engineer requires_docker=True, overriding task context
+2026-06-27 21:28:56,518 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=6, recovery_timeout=30s, state=closed
+2026-06-27 21:28:56,520 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=3, recovery_timeout=600s, state=closed
+2026-06-27 21:28:56,520 - services.agent_executor - INFO - 🔍 WORKSPACE PREP DEBUG: agent=senior_software_engineer, skip_workspace_prep=True, has_issue_number=True, issue_number=6
+2026-06-27 21:28:56,520 - services.agent_executor - INFO - Skipping workspace preparation (skip_workspace_prep=True) for senior_software_engineer
+2026-06-27 21:28:56,520 - services.agent_executor - INFO - Generated container name for UI tracking: claude-agent-code-wrapper-71307602-3bc5-47d1-8254-b536ffb6fb03
+2026-06-27 21:28:56,523 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/860bc8c9-e2e6-4c51-bd22-ee76a1c90c15 [status:201 duration:0.003s]
+2026-06-27 21:28:56,524 - monitoring.observability - INFO - Indexed agent lifecycle event agent_initialized to agent-events-2026-06-27
+2026-06-27 21:28:56,524 - services.agent_executor - INFO - Agent execution started with ID: 388b298c-5864-4704-8f6c-f826183381f1
+2026-06-27 21:28:56,526 - monitoring.claude_code_breaker - INFO - Claude Code breaker initialized with Redis persistence. State: closed
+2026-06-27 21:28:56,537 - agents.base_maker_agent - INFO - Agent senior_software_engineer executing in initial mode (variant=implementation)
+2026-06-27 21:28:56,537 - agents.base_maker_agent - INFO - Added 2 MCP servers to context
+2026-06-27 21:28:56,537 - claude.claude_integration - INFO - run_claude_code called
+2026-06-27 21:28:56,537 - claude.claude_integration - INFO - Context project: code-wrapper
+2026-06-27 21:28:56,537 - claude.claude_integration - INFO - Prompt length: 3182
+2026-06-27 21:28:56,541 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/9d37b347-35b3-4a26-b058-c495f79cf87c [status:201 duration:0.003s]
+2026-06-27 21:28:56,541 - monitoring.observability - INFO - Indexed agent lifecycle event prompt_constructed to agent-events-2026-06-27
+2026-06-27 21:28:56,541 - claude.claude_integration - INFO - Agent senior_software_engineer: use_docker from context=True, agent_config present=True
+2026-06-27 21:28:56,541 - claude.claude_integration - INFO - Agent senior_software_engineer: agent_config type=<class 'config.manager.AgentConfig'>, has requires_docker=True
+2026-06-27 21:28:56,541 - claude.claude_integration - INFO - Agent senior_software_engineer: Using agent_config.requires_docker=True
+2026-06-27 21:28:56,541 - claude.claude_integration - INFO - Running agent in Docker container for project code-wrapper
+2026-06-27 21:28:56,541 - claude.docker_runner - INFO - Running agent senior_software_engineer in Docker container for project code-wrapper
+2026-06-27 21:28:56,541 - claude.docker_runner - INFO - Adding HTTP MCP server: context7 at ${CONTEXT7_MCP_URL}
+2026-06-27 21:28:56,541 - claude.docker_runner - INFO - Adding stdio MCP server: playwright
+2026-06-27 21:28:56,541 - claude.docker_runner - INFO - Using temporary directory for MCP config: /workspace/.orchestrator/tmp
+2026-06-27 21:28:56,542 - claude.docker_runner - INFO - Wrote MCP config to /workspace/.orchestrator/tmp/mcp_config_senior_software_engineer_71307602-3bc5-47d1-8254-b536ffb6fb03_1782595736.json
+2026-06-27 21:28:56,542 - claude.docker_runner - INFO - Using fallback host workspace path: /home/austinsand/workspace/orchestrator
+2026-06-27 21:28:56,542 - claude.docker_runner - INFO - Mounting project: container=/workspace/code-wrapper, host=/home/austinsand/workspace/orchestrator/code-wrapper
+2026-06-27 21:28:56,547 - claude.docker_runner - INFO - Agent senior_software_engineer has filesystem_write_allowed=true, mounting workspace as READ-WRITE
+2026-06-27 21:28:56,547 - claude.docker_runner - INFO - Verifying write access to /workspace/code-wrapper
+2026-06-27 21:28:56,548 - claude.docker_runner - INFO - ✓ Filesystem write verification passed: Can read, write, and delete files in /workspace/code-wrapper
+2026-06-27 21:28:56,548 - claude.docker_runner - INFO - Using HOST_HOME=/home/austinsand
+2026-06-27 21:28:56,548 - claude.docker_runner - INFO - Adding -i flag for stdin support
+2026-06-27 21:28:56,548 - claude.docker_runner - INFO - DOCKER MOUNT: /home/austinsand/workspace/orchestrator/code-wrapper:/workspace:rw
+2026-06-27 21:28:56,548 - claude.docker_runner - INFO - Mounting wrapper: /home/austinsand/workspace/orchestrator/switchyard/scripts/docker-claude-wrapper.py -> /app/scripts/docker-claude-wrapper.py
+2026-06-27 21:28:56,548 - claude.docker_runner - INFO - Mounting MCP config: /home/austinsand/workspace/orchestrator/.orchestrator/tmp/mcp_config_senior_software_engineer_71307602-3bc5-47d1-8254-b536ffb6fb03_1782595736.json -> /home/orchestrator/.mcp_config.json
+2026-06-27 21:28:56,552 - claude.docker_runner - WARNING - Reference repo 'documentation_robotics' not found at /workspace/documentation_robotics; skipping mount. Clone the repo into the orchestrator workspace to enable it.
+2026-06-27 21:28:56,765 - claude.docker_runner - WARNING - Failed to create worktree for switchyard: Warning: Permanently added 'github.com' (ED25519) to the list of known hosts.
+Load key "/home/orchestrator/.ssh/id_github": error in libcrypto
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.; will mount base clone directly
+2026-06-27 21:28:56,766 - claude.docker_runner - WARNING - Falling back to base clone for reference repo 'switchyard'. Concurrent agent launches may see transient git state.
+2026-06-27 21:28:56,766 - claude.docker_runner - INFO - Mounting reference repo switchyard: /home/austinsand/workspace/orchestrator/switchyard -> /reference/switchyard:ro
+2026-06-27 21:28:56,771 - claude.environment - INFO - Using CLAUDE_CODE_OAUTH_TOKEN (subscription billing)
+2026-06-27 21:28:56,798 - claude.docker_runner - INFO - Agent senior_software_engineer requires dev container, using project image: code-wrapper-agent:latest
+2026-06-27 21:28:56,798 - claude.docker_runner - INFO - Using Docker image: code-wrapper-agent:latest for agent senior_software_engineer
+2026-06-27 21:28:56,798 - claude.docker_runner - INFO - Using Claude model in Docker: claude-sonnet-4-6
+2026-06-27 21:28:56,810 - claude.docker_runner - INFO - Pre-launch safety check: Verifying container write access...
+2026-06-27 21:28:56,810 - claude.docker_runner - INFO -    Running container write test (attempt 1/3) with container: write-test-senior_software_engineer-e67ca3ed
+2026-06-27 21:28:57,289 - claude.docker_runner - INFO -    ✓ Container write test PASSED
+2026-06-27 21:28:57,289 - claude.docker_runner - INFO - ✓ Pre-launch verification passed: Container has write access
+2026-06-27 21:28:57,290 - claude.docker_runner - INFO - Wrote prompt to /workspace/code-wrapper/.claude_prompt_71307602-3bc5-47d1-8254-b536ffb6fb03.txt (3182 chars)
+2026-06-27 21:28:57,290 - claude.docker_runner - INFO - DEBUG: Prompt file exists at /workspace/code-wrapper/.claude_prompt_71307602-3bc5-47d1-8254-b536ffb6fb03.txt
+2026-06-27 21:28:57,290 - claude.docker_runner - INFO - DEBUG: File size: 3186, permissions: 0o100644
+2026-06-27 21:28:57,290 - claude.docker_runner - INFO - Using MCP config: /home/orchestrator/.mcp_config.json
+2026-06-27 21:28:57,290 - claude.docker_runner - INFO - Executing detached: docker run -d ...
+2026-06-27 21:28:57,296 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/11c8b90f-dbbc-49bc-88af-045eb7e817da [status:201 duration:0.004s]
+2026-06-27 21:28:57,296 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_started to agent-events-2026-06-27
+2026-06-27 21:28:57,301 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/e9639fad-f189-4dbc-b2af-3dfae09532a0 [status:201 duration:0.003s]
+2026-06-27 21:28:57,301 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_started to agent-events-2026-06-27
+2026-06-27 21:28:57,639 - claude.docker_runner - INFO - Launched detached container: 833a68a75ef7
+2026-06-27 21:28:57,643 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/264daff2-89f2-4f42-b2a2-cd9598e6792e [status:201 duration:0.003s]
+2026-06-27 21:28:57,643 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_succeeded to agent-events-2026-06-27
+2026-06-27 21:28:57,645 - claude.docker_runner - INFO - Registered active container: claude-agent-code-wrapper-71307602-3bc5-47d1-8254-b536ffb6fb03 (agent=senior_software_engineer, project=code-wrapper, id=833a68a75ef7be5762e322dbae66f97ff3eb5e74fe6a3b5bae7c146c7e00e182)
+2026-06-27 21:28:57,763 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:28:57.763074+00:00] [INFO] docker-claude-wrapper: ✓ Connected to Redis
+2026-06-27 21:28:58,956 - claude.docker_runner - INFO - Captured Claude Code session_id: 4c17d958-0c93-4415-8fd2-810619394070
+2026-06-27 21:29:12,647 - claude.docker_runner - INFO - [Claude] {"passed": 1, "failed": 0, "warnings": 0, "failures": [], "warning_list": []}
+2026-06-27 21:29:12,685 - claude.docker_runner - INFO - [Claude] Session ended: stop_reason=end_turn, is_error=False, clean=True, result_length=77
+2026-06-27 21:29:12,685 - claude.docker_runner - INFO - Claude end_turn detected for claude-agent-code-wrapper-71307602-3bc5-47d1-8254-b536ffb6fb03; waiting up to 30s for clean exit...
+2026-06-27 21:29:13,037 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:29:13.037504+00:00] [INFO] docker-claude-wrapper: ✓ Wrote final result to Redis: agent_result:code-wrapper:6:71307602-3bc5-47d1-8254-b536ffb6fb03
+2026-06-27 21:29:13,037 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:29:13.037762+00:00] [INFO] docker-claude-wrapper: ✓ Wrote fallback result to /tmp/agent_result_71307602-3bc5-47d1-8254-b536ffb6fb03.json
+2026-06-27 21:29:13,248 - claude.docker_runner - INFO - Cleaned up 1 prompt file(s) after agent completion
+2026-06-27 21:29:13,252 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/eb8d4f0f-10e5-43d0-9bb9-a5dde961817e [status:201 duration:0.003s]
+2026-06-27 21:29:13,252 - monitoring.observability - INFO - Indexed agent lifecycle event container_execution_completed to agent-events-2026-06-27
+2026-06-27 21:29:13,255 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/ffd4137a-9da1-4836-bbc5-acc188d90acd [status:201 duration:0.002s]
+2026-06-27 21:29:13,255 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_completed to agent-events-2026-06-27
+2026-06-27 21:29:13,255 - claude.docker_runner - INFO - Agent completed successfully in container, result length: 77
+2026-06-27 21:29:13,256 - claude.docker_runner - INFO - Persisted agent result to Redis: agent_result:code-wrapper:6:71307602-3bc5-47d1-8254-b536ffb6fb03
+2026-06-27 21:29:13,272 - services.github_app_auth - WARNING - GitHub App authentication not configured, will use PAT fallback
+2026-06-27 21:29:13,272 - services.github_integration - WARNING - Using Personal Access Token authentication
+2026-06-27 21:29:13,297 - services.github_integration - INFO - post_agent_output - workspace_type: issues, discussion_id: None, context keys: ['issue_number', 'repository', 'project', 'workspace_type', 'discussion_id', 'pipeline_run_id']
+2026-06-27 21:29:13,298 - services.github_api_client - INFO - GitHub API breaker connected to Redis
+2026-06-27 21:29:13,298 - services.github_api_client - INFO - GitHub API client initialized with rate limiting
+2026-06-27 21:29:13,521 - services.github_api_client - ERROR - HTTP request failed: 404 - {"message":"Not Found","documentation_url":"https://docs.github.com/rest/issues/comments#create-an-issue-comment","status":"404"}
+2026-06-27 21:29:13,523 - services.github_integration - ERROR - Failed to post issue comment (part 1/1): {'error': 'http_error_404', 'status_code': 404}
+2026-06-27 21:29:13,524 - claude.docker_runner - ERROR - Failed to post senior_software_engineer output to GitHub: http_error_404
+2026-06-27 21:29:13,553 - services.work_execution_state - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer in Testing → success (cleaned up 1 phantom probe entries)
+2026-06-27 21:29:13,553 - claude.docker_runner - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer → success
+2026-06-27 21:29:13,568 - claude.docker_runner - INFO - Unregistered container: claude-agent-code-wrapper-71307602-3bc5-47d1-8254-b536ffb6fb03
+2026-06-27 21:29:13,569 - agents.base_maker_agent - INFO - Stored Claude Code session_id: 4c17d958-0c93-4415-8fd2-810619394070
+2026-06-27 21:29:13,573 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/93b142af-c1f6-4d3d-bc92-40ca9b81ecb6 [status:201 duration:0.003s]
+2026-06-27 21:29:13,573 - monitoring.observability - INFO - Indexed agent lifecycle event agent_completed to agent-events-2026-06-27
+2026-06-27 21:29:13,573 - services.agent_executor - INFO - 🔍 FINALIZATION DEBUG: workspace_context=NONE, workspace_type=N/A, issue_number=6
+2026-06-27 21:29:13,573 - services.agent_executor - WARNING - ⚠️ FAILSAFE: workspace_context is None for senior_software_engineer, but agent completed. Checking for uncommitted changes...
+2026-06-27 21:29:13,573 - services.agent_executor - INFO - Skipping failsafe commit check for repair_test execution type
+2026-06-27 21:29:13,576 - services.agent_executor - INFO - Agent senior_software_engineer completed successfully (duration: 17045ms)
+2026-06-27 21:29:13,576 - pipeline.repair_cycle - INFO - Successfully parsed JSON directly. Keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list']
+2026-06-27 21:29:13,576 - pipeline.repair_cycle - INFO - Parsed test result JSON keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list'], warnings type: <class 'int'>, warning_list type: <class 'list'>
+2026-06-27 21:29:13,580 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/7b601c9a-9834-4c79-a06b-d77793c95364 [status:201 duration:0.003s]
+2026-06-27 21:29:13,580 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_completed to decision-events-2026-06-27
+2026-06-27 21:29:13,580 - pipeline.repair_cycle - INFO - Checkpointing compilation test cycle at iteration 1
+2026-06-27 21:29:13,580 - pipeline.repair_cycle_checkpoint - INFO - Checkpoint saved: iteration=1, test_type=compilation, agent_calls=1
+2026-06-27 21:29:13,580 - pipeline.repair_cycle - INFO - Checkpoint saved successfully at iteration 1
+2026-06-27 21:29:13,580 - pipeline.repair_cycle - INFO - No test failures in test cycle iteration 1
+2026-06-27 21:29:13,580 - pipeline.repair_cycle - INFO - Test cycle completed successfully after 1 iterations
+2026-06-27 21:29:13,584 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/043501a8-54f3-4054-b782-c68d25ee6980 [status:201 duration:0.003s]
+2026-06-27 21:29:13,584 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_completed to decision-events-2026-06-27
+2026-06-27 21:29:13,587 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/d444c24d-51b8-47a5-9648-3c5da4626ac3 [status:201 duration:0.003s]
+2026-06-27 21:29:13,587 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:13,590 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/911e1b67-3de9-4545-b0a0-df94d9567a24 [status:201 duration:0.002s]
+2026-06-27 21:29:13,590 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:13,594 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/91288fff-7036-403d-a280-1b800e6db139 [status:201 duration:0.003s]
+2026-06-27 21:29:13,594 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:13,597 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/673b74a3-3d01-4c88-8804-d1378365624e [status:201 duration:0.002s]
+2026-06-27 21:29:13,597 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:13,600 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/66fbeb99-4f56-4a15-b464-de82c2c0614e [status:201 duration:0.002s]
+2026-06-27 21:29:13,600 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:13,600 - pipeline.repair_cycle - INFO - Starting unit test cycle (test type 2/4)
+2026-06-27 21:29:13,603 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/5acdf677-aec4-4250-9633-c9e8c10aba9d [status:201 duration:0.002s]
+2026-06-27 21:29:13,603 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_started to decision-events-2026-06-27
+2026-06-27 21:29:13,603 - pipeline.repair_cycle - INFO - Test cycle iteration 1/5 for unit (test type 2/4)
+2026-06-27 21:29:13,606 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/18d49b9f-0606-44e6-9c1f-e0d4745d94d4 [status:201 duration:0.002s]
+2026-06-27 21:29:13,606 - monitoring.observability - INFO - Indexed decision event repair_cycle_iteration to decision-events-2026-06-27
+2026-06-27 21:29:13,606 - pipeline.repair_cycle - INFO - Running unit tests (test cycle iteration 1/5, test type 2)
+2026-06-27 21:29:13,609 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/1cdd9de5-d897-4c04-81bd-9d3be98cf246 [status:201 duration:0.002s]
+2026-06-27 21:29:13,609 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_started to decision-events-2026-06-27
+2026-06-27 21:29:13,615 - services.work_execution_state - INFO - Recorded execution start: code-wrapper/#6 senior_software_engineer in Testing (trigger: repair_cycle_test)
+2026-06-27 21:29:13,615 - services.agent_executor - INFO - Executing agent senior_software_engineer for project code-wrapper (task_id: ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f)
+2026-06-27 21:29:13,621 - services.agent_executor - INFO - [DIAGNOSTIC] Extracted pipeline_run_id from task_context: cf065526-de40-4fa2-b6e0-6c110ed22d8f (type: <class 'str'>)
+2026-06-27 21:29:13,621 - services.agent_executor - INFO - [DIAGNOSTIC] Full task_context keys: ['project', 'board', 'pipeline', 'repository', 'issue_number', 'issue', 'previous_stage_output', 'column', 'workspace_type', 'discussion_id', 'pipeline_run_id', 'project_dir', 'use_docker', 'task_id', 'test_configs', 'agent_name', 'max_total_agent_calls', 'checkpoint_interval', 'stage_name', 'observability', 'cycle_stack', 'task_description', 'skip_workspace_prep', 'review_cycle', 'direct_prompt', 'execution_type']
+2026-06-27 21:29:13,624 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/50513288-2fef-4fcc-bce6-f669c25c2778 [status:201 duration:0.002s]
+2026-06-27 21:29:13,624 - monitoring.observability - INFO - Indexed agent lifecycle event task_received to agent-events-2026-06-27
+2026-06-27 21:29:13,628 - services.agent_executor - INFO - Agent senior_software_engineer requires_docker=True, overriding task context
+2026-06-27 21:29:13,634 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=6, recovery_timeout=30s, state=closed
+2026-06-27 21:29:13,635 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=3, recovery_timeout=600s, state=closed
+2026-06-27 21:29:13,635 - services.agent_executor - INFO - 🔍 WORKSPACE PREP DEBUG: agent=senior_software_engineer, skip_workspace_prep=True, has_issue_number=True, issue_number=6
+2026-06-27 21:29:13,635 - services.agent_executor - INFO - Skipping workspace preparation (skip_workspace_prep=True) for senior_software_engineer
+2026-06-27 21:29:13,635 - services.agent_executor - INFO - Generated container name for UI tracking: claude-agent-code-wrapper-ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f
+2026-06-27 21:29:13,638 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/eab9acd9-c6ba-4e0b-8bac-5e4be411c3a3 [status:201 duration:0.003s]
+2026-06-27 21:29:13,638 - monitoring.observability - INFO - Indexed agent lifecycle event agent_initialized to agent-events-2026-06-27
+2026-06-27 21:29:13,639 - services.agent_executor - INFO - Agent execution started with ID: e4ae44a3-6ff2-4b5c-9e61-eb05900bc1c0
+2026-06-27 21:29:13,647 - agents.base_maker_agent - INFO - Agent senior_software_engineer executing in initial mode (variant=implementation)
+2026-06-27 21:29:13,647 - agents.base_maker_agent - INFO - Added 2 MCP servers to context
+2026-06-27 21:29:13,648 - claude.claude_integration - INFO - run_claude_code called
+2026-06-27 21:29:13,648 - claude.claude_integration - INFO - Context project: code-wrapper
+2026-06-27 21:29:13,648 - claude.claude_integration - INFO - Prompt length: 4462
+2026-06-27 21:29:13,651 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/47220198-ae61-4bb4-99cd-ca05f2af6100 [status:201 duration:0.003s]
+2026-06-27 21:29:13,651 - monitoring.observability - INFO - Indexed agent lifecycle event prompt_constructed to agent-events-2026-06-27
+2026-06-27 21:29:13,651 - claude.claude_integration - INFO - Agent senior_software_engineer: use_docker from context=True, agent_config present=True
+2026-06-27 21:29:13,651 - claude.claude_integration - INFO - Agent senior_software_engineer: agent_config type=<class 'config.manager.AgentConfig'>, has requires_docker=True
+2026-06-27 21:29:13,651 - claude.claude_integration - INFO - Agent senior_software_engineer: Using agent_config.requires_docker=True
+2026-06-27 21:29:13,651 - claude.claude_integration - INFO - Running agent in Docker container for project code-wrapper
+2026-06-27 21:29:13,651 - claude.docker_runner - INFO - Running agent senior_software_engineer in Docker container for project code-wrapper
+2026-06-27 21:29:13,652 - claude.docker_runner - INFO - Adding HTTP MCP server: context7 at ${CONTEXT7_MCP_URL}
+2026-06-27 21:29:13,652 - claude.docker_runner - INFO - Adding stdio MCP server: playwright
+2026-06-27 21:29:13,652 - claude.docker_runner - INFO - Using temporary directory for MCP config: /workspace/.orchestrator/tmp
+2026-06-27 21:29:13,652 - claude.docker_runner - INFO - Wrote MCP config to /workspace/.orchestrator/tmp/mcp_config_senior_software_engineer_ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f_1782595753.json
+2026-06-27 21:29:13,652 - claude.docker_runner - INFO - Using fallback host workspace path: /home/austinsand/workspace/orchestrator
+2026-06-27 21:29:13,652 - claude.docker_runner - INFO - Mounting project: container=/workspace/code-wrapper, host=/home/austinsand/workspace/orchestrator/code-wrapper
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - Agent senior_software_engineer has filesystem_write_allowed=true, mounting workspace as READ-WRITE
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - Verifying write access to /workspace/code-wrapper
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - ✓ Filesystem write verification passed: Can read, write, and delete files in /workspace/code-wrapper
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - Using HOST_HOME=/home/austinsand
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - Adding -i flag for stdin support
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - DOCKER MOUNT: /home/austinsand/workspace/orchestrator/code-wrapper:/workspace:rw
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - Mounting wrapper: /home/austinsand/workspace/orchestrator/switchyard/scripts/docker-claude-wrapper.py -> /app/scripts/docker-claude-wrapper.py
+2026-06-27 21:29:13,656 - claude.docker_runner - INFO - Mounting MCP config: /home/austinsand/workspace/orchestrator/.orchestrator/tmp/mcp_config_senior_software_engineer_ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f_1782595753.json -> /home/orchestrator/.mcp_config.json
+2026-06-27 21:29:13,660 - claude.docker_runner - WARNING - Reference repo 'documentation_robotics' not found at /workspace/documentation_robotics; skipping mount. Clone the repo into the orchestrator workspace to enable it.
+2026-06-27 21:29:13,868 - claude.docker_runner - WARNING - Failed to create worktree for switchyard: Load key "/home/orchestrator/.ssh/id_github": error in libcrypto
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.; will mount base clone directly
+2026-06-27 21:29:13,868 - claude.docker_runner - WARNING - Falling back to base clone for reference repo 'switchyard'. Concurrent agent launches may see transient git state.
+2026-06-27 21:29:13,868 - claude.docker_runner - INFO - Mounting reference repo switchyard: /home/austinsand/workspace/orchestrator/switchyard -> /reference/switchyard:ro
+2026-06-27 21:29:13,868 - claude.environment - INFO - Using CLAUDE_CODE_OAUTH_TOKEN (subscription billing)
+2026-06-27 21:29:13,875 - claude.docker_runner - INFO - Agent senior_software_engineer requires dev container, using project image: code-wrapper-agent:latest
+2026-06-27 21:29:13,875 - claude.docker_runner - INFO - Using Docker image: code-wrapper-agent:latest for agent senior_software_engineer
+2026-06-27 21:29:13,876 - claude.docker_runner - INFO - Using Claude model in Docker: claude-sonnet-4-6
+2026-06-27 21:29:13,880 - claude.docker_runner - INFO - Pre-launch safety check: Verifying container write access...
+2026-06-27 21:29:13,880 - claude.docker_runner - INFO -    Running container write test (attempt 1/3) with container: write-test-senior_software_engineer-186151e4
+2026-06-27 21:29:14,364 - claude.docker_runner - INFO -    ✓ Container write test PASSED
+2026-06-27 21:29:14,364 - claude.docker_runner - INFO - ✓ Pre-launch verification passed: Container has write access
+2026-06-27 21:29:14,364 - claude.docker_runner - INFO - Wrote prompt to /workspace/code-wrapper/.claude_prompt_ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f.txt (4462 chars)
+2026-06-27 21:29:14,365 - claude.docker_runner - INFO - DEBUG: Prompt file exists at /workspace/code-wrapper/.claude_prompt_ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f.txt
+2026-06-27 21:29:14,365 - claude.docker_runner - INFO - DEBUG: File size: 4478, permissions: 0o100644
+2026-06-27 21:29:14,365 - claude.docker_runner - INFO - Using MCP config: /home/orchestrator/.mcp_config.json
+2026-06-27 21:29:14,365 - claude.docker_runner - INFO - Executing detached: docker run -d ...
+2026-06-27 21:29:14,368 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/bd207574-366e-4e8d-b1e5-851bd7d0ddca [status:201 duration:0.003s]
+2026-06-27 21:29:14,368 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_started to agent-events-2026-06-27
+2026-06-27 21:29:14,371 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/79063c3f-20f4-4a7b-9b8e-e37c9bd33f76 [status:201 duration:0.002s]
+2026-06-27 21:29:14,371 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_started to agent-events-2026-06-27
+2026-06-27 21:29:14,748 - claude.docker_runner - INFO - Launched detached container: 094b71ebe11a
+2026-06-27 21:29:14,752 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/de2498dc-2bfe-4fa5-8a0c-98ee56f3248c [status:201 duration:0.003s]
+2026-06-27 21:29:14,752 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_succeeded to agent-events-2026-06-27
+2026-06-27 21:29:14,752 - claude.docker_runner - INFO - Registered active container: claude-agent-code-wrapper-ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f (agent=senior_software_engineer, project=code-wrapper, id=094b71ebe11a6c886f005c328c37a5638a83c43fa115f0be3f46d8e19f53f8c1)
+2026-06-27 21:29:14,874 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:29:14.874258+00:00] [INFO] docker-claude-wrapper: ✓ Connected to Redis
+2026-06-27 21:29:16,611 - claude.docker_runner - INFO - Captured Claude Code session_id: ab5eb7c1-021d-454a-9d26-30aea41028bd
+2026-06-27 21:29:18,449 - services.github_api_client - INFO - 📊 GitHub CLI operation tracked: graphql - GraphQL query executed successfully
+2026-06-27 21:29:18,479 - services.github_api_client - INFO - 📊 GitHub API Rate Limit Status: 4446/5000 remaining (11.1% used)
+2026-06-27 21:29:38,148 - claude.docker_runner - INFO - [Claude] {"passed": 91, "failed": 0, "warnings": 0, "failures": [], "warning_list": []}
+2026-06-27 21:29:38,248 - claude.docker_runner - INFO - [Claude] Session ended: stop_reason=end_turn, is_error=False, clean=True, result_length=78
+2026-06-27 21:29:38,248 - claude.docker_runner - INFO - Claude end_turn detected for claude-agent-code-wrapper-ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f; waiting up to 30s for clean exit...
+2026-06-27 21:29:38,506 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:29:38.505410+00:00] [INFO] docker-claude-wrapper: ✓ Wrote final result to Redis: agent_result:code-wrapper:6:ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f
+2026-06-27 21:29:38,506 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:29:38.506140+00:00] [INFO] docker-claude-wrapper: ✓ Wrote fallback result to /tmp/agent_result_ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f.json
+2026-06-27 21:29:38,752 - claude.docker_runner - INFO - Cleaned up 1 prompt file(s) after agent completion
+2026-06-27 21:29:38,758 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/09e1fcee-06f2-4a14-80a9-99f58212b963 [status:201 duration:0.005s]
+2026-06-27 21:29:38,758 - monitoring.observability - INFO - Indexed agent lifecycle event container_execution_completed to agent-events-2026-06-27
+2026-06-27 21:29:38,764 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/e0f57562-3f6e-4026-898f-1e2635e0791e [status:201 duration:0.004s]
+2026-06-27 21:29:38,764 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_completed to agent-events-2026-06-27
+2026-06-27 21:29:38,764 - claude.docker_runner - INFO - Agent completed successfully in container, result length: 78
+2026-06-27 21:29:38,765 - claude.docker_runner - INFO - Persisted agent result to Redis: agent_result:code-wrapper:6:ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f
+2026-06-27 21:29:38,777 - services.github_integration - WARNING - Using Personal Access Token authentication
+2026-06-27 21:29:38,796 - services.github_integration - INFO - post_agent_output - workspace_type: issues, discussion_id: None, context keys: ['issue_number', 'repository', 'project', 'workspace_type', 'discussion_id', 'pipeline_run_id']
+2026-06-27 21:29:39,015 - services.github_api_client - ERROR - HTTP request failed: 404 - {"message":"Not Found","documentation_url":"https://docs.github.com/rest/issues/comments#create-an-issue-comment","status":"404"}
+2026-06-27 21:29:39,017 - services.github_integration - ERROR - Failed to post issue comment (part 1/1): {'error': 'http_error_404', 'status_code': 404}
+2026-06-27 21:29:39,018 - claude.docker_runner - ERROR - Failed to post senior_software_engineer output to GitHub: http_error_404
+2026-06-27 21:29:39,047 - services.work_execution_state - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer in Testing → success
+2026-06-27 21:29:39,047 - claude.docker_runner - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer → success
+2026-06-27 21:29:39,061 - claude.docker_runner - INFO - Unregistered container: claude-agent-code-wrapper-ba8ef9fb-33a9-4fb8-bb68-03c6f4178e9f
+2026-06-27 21:29:39,062 - agents.base_maker_agent - INFO - Stored Claude Code session_id: ab5eb7c1-021d-454a-9d26-30aea41028bd
+2026-06-27 21:29:39,065 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/298c144b-aa0b-4ea9-a27b-874caa823909 [status:201 duration:0.003s]
+2026-06-27 21:29:39,065 - monitoring.observability - INFO - Indexed agent lifecycle event agent_completed to agent-events-2026-06-27
+2026-06-27 21:29:39,066 - services.agent_executor - INFO - 🔍 FINALIZATION DEBUG: workspace_context=NONE, workspace_type=N/A, issue_number=6
+2026-06-27 21:29:39,066 - services.agent_executor - WARNING - ⚠️ FAILSAFE: workspace_context is None for senior_software_engineer, but agent completed. Checking for uncommitted changes...
+2026-06-27 21:29:39,066 - services.agent_executor - INFO - Skipping failsafe commit check for repair_test execution type
+2026-06-27 21:29:39,069 - services.agent_executor - INFO - Agent senior_software_engineer completed successfully (duration: 25423ms)
+2026-06-27 21:29:39,069 - pipeline.repair_cycle - INFO - Successfully parsed JSON directly. Keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list']
+2026-06-27 21:29:39,069 - pipeline.repair_cycle - INFO - Parsed test result JSON keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list'], warnings type: <class 'int'>, warning_list type: <class 'list'>
+2026-06-27 21:29:39,072 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/c731adfa-10ad-4b4c-a4b9-ea7f759acbff [status:201 duration:0.003s]
+2026-06-27 21:29:39,072 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_completed to decision-events-2026-06-27
+2026-06-27 21:29:39,072 - pipeline.repair_cycle - INFO - Checkpointing unit test cycle at iteration 1
+2026-06-27 21:29:39,073 - pipeline.repair_cycle_checkpoint - INFO - Checkpoint saved: iteration=1, test_type=unit, agent_calls=2
+2026-06-27 21:29:39,073 - pipeline.repair_cycle - INFO - Checkpoint saved successfully at iteration 1
+2026-06-27 21:29:39,073 - pipeline.repair_cycle - INFO - No test failures in test cycle iteration 1
+2026-06-27 21:29:39,073 - pipeline.repair_cycle - INFO - Test cycle completed successfully after 1 iterations
+2026-06-27 21:29:39,076 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/53919289-08f6-42e5-b4b7-9f5728694a25 [status:201 duration:0.003s]
+2026-06-27 21:29:39,076 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_completed to decision-events-2026-06-27
+2026-06-27 21:29:39,079 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/0472e964-8862-47b9-83ba-04c0bde6a75b [status:201 duration:0.002s]
+2026-06-27 21:29:39,079 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:39,082 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/f5a441b4-9c8d-4b24-96fd-f7692192d9ba [status:201 duration:0.002s]
+2026-06-27 21:29:39,082 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:39,085 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/66bfa06c-00f3-4510-88cb-164064b7d629 [status:201 duration:0.003s]
+2026-06-27 21:29:39,085 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:39,088 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/3b463d5e-95ef-4729-8a6c-85f3f7866929 [status:201 duration:0.002s]
+2026-06-27 21:29:39,088 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:39,091 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/95a41ec1-fc2e-411b-9771-f591fa73becf [status:201 duration:0.002s]
+2026-06-27 21:29:39,091 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:29:39,092 - pipeline.repair_cycle - INFO - Starting integration test cycle (test type 3/4)
+2026-06-27 21:29:39,095 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/b2490ff2-ee2f-429e-9366-6cac4586da73 [status:201 duration:0.003s]
+2026-06-27 21:29:39,095 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_started to decision-events-2026-06-27
+2026-06-27 21:29:39,095 - pipeline.repair_cycle - INFO - Test cycle iteration 1/3 for integration (test type 3/4)
+2026-06-27 21:29:39,098 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/d6d084eb-555c-46be-a7bb-55c54dcfb00c [status:201 duration:0.003s]
+2026-06-27 21:29:39,098 - monitoring.observability - INFO - Indexed decision event repair_cycle_iteration to decision-events-2026-06-27
+2026-06-27 21:29:39,098 - pipeline.repair_cycle - INFO - Running integration tests (test cycle iteration 1/3, test type 3)
+2026-06-27 21:29:39,102 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/fadc4044-5d62-4b56-be9b-35e5aa7bee4e [status:201 duration:0.003s]
+2026-06-27 21:29:39,102 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_started to decision-events-2026-06-27
+2026-06-27 21:29:39,107 - services.work_execution_state - INFO - Recorded execution start: code-wrapper/#6 senior_software_engineer in Testing (trigger: repair_cycle_test)
+2026-06-27 21:29:39,107 - services.agent_executor - INFO - Executing agent senior_software_engineer for project code-wrapper (task_id: c47a8b45-edaa-401a-88a5-073598c8dcbf)
+2026-06-27 21:29:39,112 - services.agent_executor - INFO - [DIAGNOSTIC] Extracted pipeline_run_id from task_context: cf065526-de40-4fa2-b6e0-6c110ed22d8f (type: <class 'str'>)
+2026-06-27 21:29:39,112 - services.agent_executor - INFO - [DIAGNOSTIC] Full task_context keys: ['project', 'board', 'pipeline', 'repository', 'issue_number', 'issue', 'previous_stage_output', 'column', 'workspace_type', 'discussion_id', 'pipeline_run_id', 'project_dir', 'use_docker', 'task_id', 'test_configs', 'agent_name', 'max_total_agent_calls', 'checkpoint_interval', 'stage_name', 'observability', 'cycle_stack', 'task_description', 'skip_workspace_prep', 'review_cycle', 'direct_prompt', 'execution_type']
+2026-06-27 21:29:39,116 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/4d5b468f-d38b-40af-9f6e-68a7b7fc2411 [status:201 duration:0.003s]
+2026-06-27 21:29:39,116 - monitoring.observability - INFO - Indexed agent lifecycle event task_received to agent-events-2026-06-27
+2026-06-27 21:29:39,120 - services.agent_executor - INFO - Agent senior_software_engineer requires_docker=True, overriding task context
+2026-06-27 21:29:39,125 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=6, recovery_timeout=30s, state=closed
+2026-06-27 21:29:39,126 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=3, recovery_timeout=600s, state=closed
+2026-06-27 21:29:39,126 - services.agent_executor - INFO - 🔍 WORKSPACE PREP DEBUG: agent=senior_software_engineer, skip_workspace_prep=True, has_issue_number=True, issue_number=6
+2026-06-27 21:29:39,126 - services.agent_executor - INFO - Skipping workspace preparation (skip_workspace_prep=True) for senior_software_engineer
+2026-06-27 21:29:39,126 - services.agent_executor - INFO - Generated container name for UI tracking: claude-agent-code-wrapper-c47a8b45-edaa-401a-88a5-073598c8dcbf
+2026-06-27 21:29:39,129 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/8899bd68-0289-4f56-bb5d-a957ae7663dc [status:201 duration:0.003s]
+2026-06-27 21:29:39,129 - monitoring.observability - INFO - Indexed agent lifecycle event agent_initialized to agent-events-2026-06-27
+2026-06-27 21:29:39,129 - services.agent_executor - INFO - Agent execution started with ID: caef3694-e574-41da-9504-6352b880faeb
+2026-06-27 21:29:39,138 - agents.base_maker_agent - INFO - Agent senior_software_engineer executing in initial mode (variant=implementation)
+2026-06-27 21:29:39,138 - agents.base_maker_agent - INFO - Added 2 MCP servers to context
+2026-06-27 21:29:39,138 - claude.claude_integration - INFO - run_claude_code called
+2026-06-27 21:29:39,138 - claude.claude_integration - INFO - Context project: code-wrapper
+2026-06-27 21:29:39,138 - claude.claude_integration - INFO - Prompt length: 4706
+2026-06-27 21:29:39,141 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/6d6df82b-d93f-4afc-9f11-f31f851fe09a [status:201 duration:0.003s]
+2026-06-27 21:29:39,141 - monitoring.observability - INFO - Indexed agent lifecycle event prompt_constructed to agent-events-2026-06-27
+2026-06-27 21:29:39,141 - claude.claude_integration - INFO - Agent senior_software_engineer: use_docker from context=True, agent_config present=True
+2026-06-27 21:29:39,141 - claude.claude_integration - INFO - Agent senior_software_engineer: agent_config type=<class 'config.manager.AgentConfig'>, has requires_docker=True
+2026-06-27 21:29:39,141 - claude.claude_integration - INFO - Agent senior_software_engineer: Using agent_config.requires_docker=True
+2026-06-27 21:29:39,142 - claude.claude_integration - INFO - Running agent in Docker container for project code-wrapper
+2026-06-27 21:29:39,142 - claude.docker_runner - INFO - Running agent senior_software_engineer in Docker container for project code-wrapper
+2026-06-27 21:29:39,142 - claude.docker_runner - INFO - Adding HTTP MCP server: context7 at ${CONTEXT7_MCP_URL}
+2026-06-27 21:29:39,142 - claude.docker_runner - INFO - Adding stdio MCP server: playwright
+2026-06-27 21:29:39,142 - claude.docker_runner - INFO - Using temporary directory for MCP config: /workspace/.orchestrator/tmp
+2026-06-27 21:29:39,142 - claude.docker_runner - INFO - Wrote MCP config to /workspace/.orchestrator/tmp/mcp_config_senior_software_engineer_c47a8b45-edaa-401a-88a5-073598c8dcbf_1782595779.json
+2026-06-27 21:29:39,142 - claude.docker_runner - INFO - Using fallback host workspace path: /home/austinsand/workspace/orchestrator
+2026-06-27 21:29:39,142 - claude.docker_runner - INFO - Mounting project: container=/workspace/code-wrapper, host=/home/austinsand/workspace/orchestrator/code-wrapper
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - Agent senior_software_engineer has filesystem_write_allowed=true, mounting workspace as READ-WRITE
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - Verifying write access to /workspace/code-wrapper
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - ✓ Filesystem write verification passed: Can read, write, and delete files in /workspace/code-wrapper
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - Using HOST_HOME=/home/austinsand
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - Adding -i flag for stdin support
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - DOCKER MOUNT: /home/austinsand/workspace/orchestrator/code-wrapper:/workspace:rw
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - Mounting wrapper: /home/austinsand/workspace/orchestrator/switchyard/scripts/docker-claude-wrapper.py -> /app/scripts/docker-claude-wrapper.py
+2026-06-27 21:29:39,146 - claude.docker_runner - INFO - Mounting MCP config: /home/austinsand/workspace/orchestrator/.orchestrator/tmp/mcp_config_senior_software_engineer_c47a8b45-edaa-401a-88a5-073598c8dcbf_1782595779.json -> /home/orchestrator/.mcp_config.json
+2026-06-27 21:29:39,150 - claude.docker_runner - WARNING - Reference repo 'documentation_robotics' not found at /workspace/documentation_robotics; skipping mount. Clone the repo into the orchestrator workspace to enable it.
+2026-06-27 21:29:39,381 - claude.docker_runner - WARNING - Failed to create worktree for switchyard: Load key "/home/orchestrator/.ssh/id_github": error in libcrypto
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.; will mount base clone directly
+2026-06-27 21:29:39,381 - claude.docker_runner - WARNING - Falling back to base clone for reference repo 'switchyard'. Concurrent agent launches may see transient git state.
+2026-06-27 21:29:39,381 - claude.docker_runner - INFO - Mounting reference repo switchyard: /home/austinsand/workspace/orchestrator/switchyard -> /reference/switchyard:ro
+2026-06-27 21:29:39,381 - claude.environment - INFO - Using CLAUDE_CODE_OAUTH_TOKEN (subscription billing)
+2026-06-27 21:29:39,407 - claude.docker_runner - INFO - Agent senior_software_engineer requires dev container, using project image: code-wrapper-agent:latest
+2026-06-27 21:29:39,407 - claude.docker_runner - INFO - Using Docker image: code-wrapper-agent:latest for agent senior_software_engineer
+2026-06-27 21:29:39,407 - claude.docker_runner - INFO - Using Claude model in Docker: claude-sonnet-4-6
+2026-06-27 21:29:39,423 - claude.docker_runner - INFO - Pre-launch safety check: Verifying container write access...
+2026-06-27 21:29:39,423 - claude.docker_runner - INFO -    Running container write test (attempt 1/3) with container: write-test-senior_software_engineer-487ee45f
+2026-06-27 21:29:39,906 - claude.docker_runner - INFO -    ✓ Container write test PASSED
+2026-06-27 21:29:39,907 - claude.docker_runner - INFO - ✓ Pre-launch verification passed: Container has write access
+2026-06-27 21:29:39,907 - claude.docker_runner - INFO - Wrote prompt to /workspace/code-wrapper/.claude_prompt_c47a8b45-edaa-401a-88a5-073598c8dcbf.txt (4706 chars)
+2026-06-27 21:29:39,907 - claude.docker_runner - INFO - DEBUG: Prompt file exists at /workspace/code-wrapper/.claude_prompt_c47a8b45-edaa-401a-88a5-073598c8dcbf.txt
+2026-06-27 21:29:39,908 - claude.docker_runner - INFO - DEBUG: File size: 4726, permissions: 0o100644
+2026-06-27 21:29:39,908 - claude.docker_runner - INFO - Using MCP config: /home/orchestrator/.mcp_config.json
+2026-06-27 21:29:39,908 - claude.docker_runner - INFO - Executing detached: docker run -d ...
+2026-06-27 21:29:39,916 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/d49da0a1-1bd1-4958-b1b7-37fa3565186e [status:201 duration:0.005s]
+2026-06-27 21:29:39,916 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_started to agent-events-2026-06-27
+2026-06-27 21:29:39,923 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/6253454b-f354-4b18-8553-1db0c33e3934 [status:201 duration:0.004s]
+2026-06-27 21:29:39,923 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_started to agent-events-2026-06-27
+2026-06-27 21:29:40,351 - claude.docker_runner - INFO - Launched detached container: 5f798f3f7445
+2026-06-27 21:29:40,357 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/65c5f0c7-b7ee-41b3-9938-2c3a0ba8ed02 [status:201 duration:0.004s]
+2026-06-27 21:29:40,357 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_succeeded to agent-events-2026-06-27
+2026-06-27 21:29:40,358 - claude.docker_runner - INFO - Registered active container: claude-agent-code-wrapper-c47a8b45-edaa-401a-88a5-073598c8dcbf (agent=senior_software_engineer, project=code-wrapper, id=5f798f3f7445486425a0f0247ae6d65f9186c840a4254cc2d091a9cd10b6ec95)
+2026-06-27 21:29:40,512 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:29:40.512305+00:00] [INFO] docker-claude-wrapper: ✓ Connected to Redis
+2026-06-27 21:29:41,817 - claude.docker_runner - INFO - Captured Claude Code session_id: ae287f52-f9c4-43f8-bdc3-116781de46d8
+2026-06-27 21:29:58,308 - claude.docker_runner - INFO - [Claude] The project uses TypeScript/Vitest. The live tests in `src/__tests__/live/` are the integration tests, run via `npm run test:live`. Running them now.
+2026-06-27 21:30:20,051 - claude.docker_runner - INFO - [Claude] {"passed": 1, "failed": 0, "warnings": 0, "failures": [], "warning_list": []}
+2026-06-27 21:30:20,142 - claude.docker_runner - INFO - [Claude] Session ended: stop_reason=end_turn, is_error=False, clean=True, result_length=77
+2026-06-27 21:30:20,143 - claude.docker_runner - INFO - Claude end_turn detected for claude-agent-code-wrapper-c47a8b45-edaa-401a-88a5-073598c8dcbf; waiting up to 30s for clean exit...
+2026-06-27 21:30:20,340 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:30:20.340036+00:00] [INFO] docker-claude-wrapper: ✓ Wrote final result to Redis: agent_result:code-wrapper:6:c47a8b45-edaa-401a-88a5-073598c8dcbf
+2026-06-27 21:30:20,340 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:30:20.340442+00:00] [INFO] docker-claude-wrapper: ✓ Wrote fallback result to /tmp/agent_result_c47a8b45-edaa-401a-88a5-073598c8dcbf.json
+2026-06-27 21:30:20,554 - claude.docker_runner - INFO - Cleaned up 1 prompt file(s) after agent completion
+2026-06-27 21:30:20,561 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/2022cef2-37cb-4698-b5c9-b78145d713c8 [status:201 duration:0.005s]
+2026-06-27 21:30:20,561 - monitoring.observability - INFO - Indexed agent lifecycle event container_execution_completed to agent-events-2026-06-27
+2026-06-27 21:30:20,569 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/598617f3-66e3-4773-a065-c87399d4f3ea [status:201 duration:0.006s]
+2026-06-27 21:30:20,569 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_completed to agent-events-2026-06-27
+2026-06-27 21:30:20,569 - claude.docker_runner - INFO - Agent completed successfully in container, result length: 77
+2026-06-27 21:30:20,570 - claude.docker_runner - INFO - Persisted agent result to Redis: agent_result:code-wrapper:6:c47a8b45-edaa-401a-88a5-073598c8dcbf
+2026-06-27 21:30:20,583 - services.github_integration - WARNING - Using Personal Access Token authentication
+2026-06-27 21:30:20,598 - services.github_integration - INFO - post_agent_output - workspace_type: issues, discussion_id: None, context keys: ['issue_number', 'repository', 'project', 'workspace_type', 'discussion_id', 'pipeline_run_id']
+2026-06-27 21:30:20,852 - services.github_api_client - ERROR - HTTP request failed: 404 - {"message":"Not Found","documentation_url":"https://docs.github.com/rest/issues/comments#create-an-issue-comment","status":"404"}
+2026-06-27 21:30:20,855 - services.github_integration - ERROR - Failed to post issue comment (part 1/1): {'error': 'http_error_404', 'status_code': 404}
+2026-06-27 21:30:20,856 - claude.docker_runner - ERROR - Failed to post senior_software_engineer output to GitHub: http_error_404
+2026-06-27 21:30:20,886 - services.work_execution_state - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer in Testing → success
+2026-06-27 21:30:20,886 - claude.docker_runner - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer → success
+2026-06-27 21:30:20,900 - claude.docker_runner - INFO - Unregistered container: claude-agent-code-wrapper-c47a8b45-edaa-401a-88a5-073598c8dcbf
+2026-06-27 21:30:20,900 - agents.base_maker_agent - INFO - Stored Claude Code session_id: ae287f52-f9c4-43f8-bdc3-116781de46d8
+2026-06-27 21:30:20,914 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/27fb9fa3-04d6-476b-82a8-2d43b1baca94 [status:201 duration:0.013s]
+2026-06-27 21:30:20,914 - monitoring.observability - INFO - Indexed agent lifecycle event agent_completed to agent-events-2026-06-27
+2026-06-27 21:30:20,914 - services.agent_executor - INFO - 🔍 FINALIZATION DEBUG: workspace_context=NONE, workspace_type=N/A, issue_number=6
+2026-06-27 21:30:20,914 - services.agent_executor - WARNING - ⚠️ FAILSAFE: workspace_context is None for senior_software_engineer, but agent completed. Checking for uncommitted changes...
+2026-06-27 21:30:20,914 - services.agent_executor - INFO - Skipping failsafe commit check for repair_test execution type
+2026-06-27 21:30:20,918 - services.agent_executor - INFO - Agent senior_software_engineer completed successfully (duration: 41771ms)
+2026-06-27 21:30:20,918 - pipeline.repair_cycle - INFO - Successfully parsed JSON directly. Keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list']
+2026-06-27 21:30:20,918 - pipeline.repair_cycle - INFO - Parsed test result JSON keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list'], warnings type: <class 'int'>, warning_list type: <class 'list'>
+2026-06-27 21:30:20,921 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/414823f6-c71f-47db-88ab-ef34aadc0902 [status:201 duration:0.003s]
+2026-06-27 21:30:20,921 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_completed to decision-events-2026-06-27
+2026-06-27 21:30:20,921 - pipeline.repair_cycle - INFO - Checkpointing integration test cycle at iteration 1
+2026-06-27 21:30:20,922 - pipeline.repair_cycle_checkpoint - INFO - Checkpoint saved: iteration=1, test_type=integration, agent_calls=3
+2026-06-27 21:30:20,922 - pipeline.repair_cycle - INFO - Checkpoint saved successfully at iteration 1
+2026-06-27 21:30:20,922 - pipeline.repair_cycle - INFO - No test failures in test cycle iteration 1
+2026-06-27 21:30:20,922 - pipeline.repair_cycle - INFO - Test cycle completed successfully after 1 iterations
+2026-06-27 21:30:20,928 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/78ff8258-38ea-4d6c-8e2b-f6b621d07811 [status:201 duration:0.006s]
+2026-06-27 21:30:20,928 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_completed to decision-events-2026-06-27
+2026-06-27 21:30:20,931 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/8f2ffdc6-f550-4487-a306-5922f34aa675 [status:201 duration:0.003s]
+2026-06-27 21:30:20,932 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:20,934 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/6b28fdcd-a7f1-40fe-877d-f58d11254bc3 [status:201 duration:0.002s]
+2026-06-27 21:30:20,935 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:20,938 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/f0c03e3f-2f27-4abc-aec0-e9070d141372 [status:201 duration:0.003s]
+2026-06-27 21:30:20,938 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:20,942 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/3b061908-4c34-4861-8d49-c58460c5cfbe [status:201 duration:0.004s]
+2026-06-27 21:30:20,943 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:20,953 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/1a89c507-de09-41de-abfe-c684253a8d3f [status:201 duration:0.007s]
+2026-06-27 21:30:20,954 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:20,954 - pipeline.repair_cycle - INFO - Starting ci test cycle (test type 4/4)
+2026-06-27 21:30:20,962 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/344fee34-a6f9-4b75-a087-4a1e80501c69 [status:201 duration:0.005s]
+2026-06-27 21:30:20,963 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_started to decision-events-2026-06-27
+2026-06-27 21:30:20,964 - pipeline.repair_cycle - INFO - Test cycle iteration 1/3 for ci (test type 4/4)
+2026-06-27 21:30:20,972 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/bcf07cfd-deb8-40be-abb6-9aff8285b347 [status:201 duration:0.005s]
+2026-06-27 21:30:20,972 - monitoring.observability - INFO - Indexed decision event repair_cycle_iteration to decision-events-2026-06-27
+2026-06-27 21:30:20,973 - pipeline.repair_cycle - INFO - Running ci tests (test cycle iteration 1/3, test type 4)
+2026-06-27 21:30:20,981 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/b8ef4a3a-52a6-4628-b1be-8a43766999b4 [status:201 duration:0.005s]
+2026-06-27 21:30:20,981 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_started to decision-events-2026-06-27
+2026-06-27 21:30:21,004 - services.work_execution_state - INFO - Recorded execution start: code-wrapper/#6 senior_software_engineer in Testing (trigger: repair_cycle_test)
+2026-06-27 21:30:21,004 - services.agent_executor - INFO - Executing agent senior_software_engineer for project code-wrapper (task_id: cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f)
+2026-06-27 21:30:21,015 - services.agent_executor - INFO - [DIAGNOSTIC] Extracted pipeline_run_id from task_context: cf065526-de40-4fa2-b6e0-6c110ed22d8f (type: <class 'str'>)
+2026-06-27 21:30:21,015 - services.agent_executor - INFO - [DIAGNOSTIC] Full task_context keys: ['project', 'board', 'pipeline', 'repository', 'issue_number', 'issue', 'previous_stage_output', 'column', 'workspace_type', 'discussion_id', 'pipeline_run_id', 'project_dir', 'use_docker', 'task_id', 'test_configs', 'agent_name', 'max_total_agent_calls', 'checkpoint_interval', 'stage_name', 'observability', 'cycle_stack', 'task_description', 'skip_workspace_prep', 'review_cycle', 'direct_prompt', 'execution_type']
+2026-06-27 21:30:21,020 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/a2b320a0-fd09-4f09-92f3-22f2e29823d5 [status:201 duration:0.003s]
+2026-06-27 21:30:21,020 - monitoring.observability - INFO - Indexed agent lifecycle event task_received to agent-events-2026-06-27
+2026-06-27 21:30:21,025 - services.agent_executor - INFO - Agent senior_software_engineer requires_docker=True, overriding task context
+2026-06-27 21:30:21,031 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=6, recovery_timeout=30s, state=closed
+2026-06-27 21:30:21,032 - services.circuit_breaker - INFO - Circuit breaker 'senior_software_engineer' initialized: failure_threshold=3, recovery_timeout=600s, state=closed
+2026-06-27 21:30:21,032 - services.agent_executor - INFO - 🔍 WORKSPACE PREP DEBUG: agent=senior_software_engineer, skip_workspace_prep=True, has_issue_number=True, issue_number=6
+2026-06-27 21:30:21,032 - services.agent_executor - INFO - Skipping workspace preparation (skip_workspace_prep=True) for senior_software_engineer
+2026-06-27 21:30:21,033 - services.agent_executor - INFO - Generated container name for UI tracking: claude-agent-code-wrapper-cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f
+2026-06-27 21:30:21,036 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/3a45a54e-26fe-45a8-9d0d-f27714515cf2 [status:201 duration:0.002s]
+2026-06-27 21:30:21,036 - monitoring.observability - INFO - Indexed agent lifecycle event agent_initialized to agent-events-2026-06-27
+2026-06-27 21:30:21,036 - services.agent_executor - INFO - Agent execution started with ID: 67e84113-e6c7-405a-964f-492454c1cfa5
+2026-06-27 21:30:21,044 - agents.base_maker_agent - INFO - Agent senior_software_engineer executing in initial mode (variant=implementation)
+2026-06-27 21:30:21,044 - agents.base_maker_agent - INFO - Added 2 MCP servers to context
+2026-06-27 21:30:21,044 - claude.claude_integration - INFO - run_claude_code called
+2026-06-27 21:30:21,044 - claude.claude_integration - INFO - Context project: code-wrapper
+2026-06-27 21:30:21,044 - claude.claude_integration - INFO - Prompt length: 4162
+2026-06-27 21:30:21,048 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/ee45c862-5c61-40de-89d9-30240db0c3b5 [status:201 duration:0.003s]
+2026-06-27 21:30:21,048 - monitoring.observability - INFO - Indexed agent lifecycle event prompt_constructed to agent-events-2026-06-27
+2026-06-27 21:30:21,048 - claude.claude_integration - INFO - Agent senior_software_engineer: use_docker from context=True, agent_config present=True
+2026-06-27 21:30:21,048 - claude.claude_integration - INFO - Agent senior_software_engineer: agent_config type=<class 'config.manager.AgentConfig'>, has requires_docker=True
+2026-06-27 21:30:21,048 - claude.claude_integration - INFO - Agent senior_software_engineer: Using agent_config.requires_docker=True
+2026-06-27 21:30:21,048 - claude.claude_integration - INFO - Running agent in Docker container for project code-wrapper
+2026-06-27 21:30:21,048 - claude.docker_runner - INFO - Running agent senior_software_engineer in Docker container for project code-wrapper
+2026-06-27 21:30:21,048 - claude.docker_runner - INFO - Adding HTTP MCP server: context7 at ${CONTEXT7_MCP_URL}
+2026-06-27 21:30:21,048 - claude.docker_runner - INFO - Adding stdio MCP server: playwright
+2026-06-27 21:30:21,048 - claude.docker_runner - INFO - Using temporary directory for MCP config: /workspace/.orchestrator/tmp
+2026-06-27 21:30:21,048 - claude.docker_runner - INFO - Wrote MCP config to /workspace/.orchestrator/tmp/mcp_config_senior_software_engineer_cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f_1782595821.json
+2026-06-27 21:30:21,048 - claude.docker_runner - INFO - Using fallback host workspace path: /home/austinsand/workspace/orchestrator
+2026-06-27 21:30:21,049 - claude.docker_runner - INFO - Mounting project: container=/workspace/code-wrapper, host=/home/austinsand/workspace/orchestrator/code-wrapper
+2026-06-27 21:30:21,052 - claude.docker_runner - INFO - Agent senior_software_engineer has filesystem_write_allowed=true, mounting workspace as READ-WRITE
+2026-06-27 21:30:21,052 - claude.docker_runner - INFO - Verifying write access to /workspace/code-wrapper
+2026-06-27 21:30:21,052 - claude.docker_runner - INFO - ✓ Filesystem write verification passed: Can read, write, and delete files in /workspace/code-wrapper
+2026-06-27 21:30:21,053 - claude.docker_runner - INFO - Using HOST_HOME=/home/austinsand
+2026-06-27 21:30:21,053 - claude.docker_runner - INFO - Adding -i flag for stdin support
+2026-06-27 21:30:21,053 - claude.docker_runner - INFO - DOCKER MOUNT: /home/austinsand/workspace/orchestrator/code-wrapper:/workspace:rw
+2026-06-27 21:30:21,053 - claude.docker_runner - INFO - Mounting wrapper: /home/austinsand/workspace/orchestrator/switchyard/scripts/docker-claude-wrapper.py -> /app/scripts/docker-claude-wrapper.py
+2026-06-27 21:30:21,053 - claude.docker_runner - INFO - Mounting MCP config: /home/austinsand/workspace/orchestrator/.orchestrator/tmp/mcp_config_senior_software_engineer_cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f_1782595821.json -> /home/orchestrator/.mcp_config.json
+2026-06-27 21:30:21,056 - claude.docker_runner - WARNING - Reference repo 'documentation_robotics' not found at /workspace/documentation_robotics; skipping mount. Clone the repo into the orchestrator workspace to enable it.
+2026-06-27 21:30:21,267 - claude.docker_runner - WARNING - Failed to create worktree for switchyard: Load key "/home/orchestrator/.ssh/id_github": error in libcrypto
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.; will mount base clone directly
+2026-06-27 21:30:21,267 - claude.docker_runner - WARNING - Falling back to base clone for reference repo 'switchyard'. Concurrent agent launches may see transient git state.
+2026-06-27 21:30:21,268 - claude.docker_runner - INFO - Mounting reference repo switchyard: /home/austinsand/workspace/orchestrator/switchyard -> /reference/switchyard:ro
+2026-06-27 21:30:21,268 - claude.environment - INFO - Using CLAUDE_CODE_OAUTH_TOKEN (subscription billing)
+2026-06-27 21:30:21,294 - claude.docker_runner - INFO - Agent senior_software_engineer requires dev container, using project image: code-wrapper-agent:latest
+2026-06-27 21:30:21,294 - claude.docker_runner - INFO - Using Docker image: code-wrapper-agent:latest for agent senior_software_engineer
+2026-06-27 21:30:21,295 - claude.docker_runner - INFO - Using Claude model in Docker: claude-sonnet-4-6
+2026-06-27 21:30:21,308 - claude.docker_runner - INFO - Pre-launch safety check: Verifying container write access...
+2026-06-27 21:30:21,308 - claude.docker_runner - INFO -    Running container write test (attempt 1/3) with container: write-test-senior_software_engineer-f9a6d6a1
+2026-06-27 21:30:21,784 - claude.docker_runner - INFO -    ✓ Container write test PASSED
+2026-06-27 21:30:21,784 - claude.docker_runner - INFO - ✓ Pre-launch verification passed: Container has write access
+2026-06-27 21:30:21,784 - claude.docker_runner - INFO - Wrote prompt to /workspace/code-wrapper/.claude_prompt_cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f.txt (4162 chars)
+2026-06-27 21:30:21,785 - claude.docker_runner - INFO - DEBUG: Prompt file exists at /workspace/code-wrapper/.claude_prompt_cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f.txt
+2026-06-27 21:30:21,785 - claude.docker_runner - INFO - DEBUG: File size: 4172, permissions: 0o100644
+2026-06-27 21:30:21,785 - claude.docker_runner - INFO - Using MCP config: /home/orchestrator/.mcp_config.json
+2026-06-27 21:30:21,785 - claude.docker_runner - INFO - Executing detached: docker run -d ...
+2026-06-27 21:30:21,793 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/3ac73604-0dac-482c-9b04-f5abc6ab5ce1 [status:201 duration:0.005s]
+2026-06-27 21:30:21,793 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_started to agent-events-2026-06-27
+2026-06-27 21:30:21,800 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/f7fdd590-ad92-4850-aca7-1a37e6a8e24d [status:201 duration:0.004s]
+2026-06-27 21:30:21,800 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_started to agent-events-2026-06-27
+2026-06-27 21:30:22,056 - claude.docker_runner - INFO - Launched detached container: 98e35001c749
+2026-06-27 21:30:22,060 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/5112917b-22e2-49e7-ab6a-c92696c11d3d [status:201 duration:0.003s]
+2026-06-27 21:30:22,061 - monitoring.observability - INFO - Indexed agent lifecycle event container_launch_succeeded to agent-events-2026-06-27
+2026-06-27 21:30:22,061 - claude.docker_runner - INFO - Registered active container: claude-agent-code-wrapper-cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f (agent=senior_software_engineer, project=code-wrapper, id=98e35001c74929a2ec9224e0fed7e2f560a89a631cee162bee57494f5d86fbcd)
+2026-06-27 21:30:22,207 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:30:22.207643+00:00] [INFO] docker-claude-wrapper: ✓ Connected to Redis
+2026-06-27 21:30:23,701 - claude.docker_runner - INFO - Captured Claude Code session_id: 68b4be63-0f27-49ee-b190-242c67173e56
+2026-06-27 21:30:33,250 - claude.docker_runner - INFO - [Claude] {"passed": 1, "failed": 0, "warnings": 0, "failures": [], "warning_list": []}
+2026-06-27 21:30:33,322 - claude.docker_runner - INFO - [Claude] Session ended: stop_reason=end_turn, is_error=False, clean=True, result_length=77
+2026-06-27 21:30:33,322 - claude.docker_runner - INFO - Claude end_turn detected for claude-agent-code-wrapper-cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f; waiting up to 30s for clean exit...
+2026-06-27 21:30:33,630 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:30:33.629989+00:00] [INFO] docker-claude-wrapper: ✓ Wrote final result to Redis: agent_result:code-wrapper:6:cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f
+2026-06-27 21:30:33,630 - claude.docker_runner - WARNING - Non-JSON stdout: [2026-06-27T21:30:33.630234+00:00] [INFO] docker-claude-wrapper: ✓ Wrote fallback result to /tmp/agent_result_cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f.json
+2026-06-27 21:30:33,810 - claude.docker_runner - INFO - Cleaned up 1 prompt file(s) after agent completion
+2026-06-27 21:30:33,815 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/1541513b-ef55-480b-a3c3-ac00a4eb1451 [status:201 duration:0.004s]
+2026-06-27 21:30:33,815 - monitoring.observability - INFO - Indexed agent lifecycle event container_execution_completed to agent-events-2026-06-27
+2026-06-27 21:30:33,819 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/d5000a6d-52ee-428e-98b2-d0e1d30eacbe [status:201 duration:0.003s]
+2026-06-27 21:30:33,819 - monitoring.observability - INFO - Indexed agent lifecycle event claude_api_call_completed to agent-events-2026-06-27
+2026-06-27 21:30:33,819 - claude.docker_runner - INFO - Agent completed successfully in container, result length: 77
+2026-06-27 21:30:33,819 - claude.docker_runner - INFO - Persisted agent result to Redis: agent_result:code-wrapper:6:cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f
+2026-06-27 21:30:33,826 - services.github_integration - WARNING - Using Personal Access Token authentication
+2026-06-27 21:30:33,840 - services.github_integration - INFO - post_agent_output - workspace_type: issues, discussion_id: None, context keys: ['issue_number', 'repository', 'project', 'workspace_type', 'discussion_id', 'pipeline_run_id']
+2026-06-27 21:30:34,087 - services.github_api_client - ERROR - HTTP request failed: 404 - {"message":"Not Found","documentation_url":"https://docs.github.com/rest/issues/comments#create-an-issue-comment","status":"404"}
+2026-06-27 21:30:34,089 - services.github_integration - ERROR - Failed to post issue comment (part 1/1): {'error': 'http_error_404', 'status_code': 404}
+2026-06-27 21:30:34,090 - claude.docker_runner - ERROR - Failed to post senior_software_engineer output to GitHub: http_error_404
+2026-06-27 21:30:34,122 - services.work_execution_state - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer in Testing → success
+2026-06-27 21:30:34,122 - claude.docker_runner - INFO - Recorded execution outcome: code-wrapper/#6 senior_software_engineer → success
+2026-06-27 21:30:34,144 - claude.docker_runner - INFO - Unregistered container: claude-agent-code-wrapper-cdfd8341-a62e-4e69-a6c1-5e7eb23fec2f
+2026-06-27 21:30:34,145 - agents.base_maker_agent - INFO - Stored Claude Code session_id: 68b4be63-0f27-49ee-b190-242c67173e56
+2026-06-27 21:30:34,152 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/0d02b35a-7251-44db-8bdb-1339899847e6 [status:201 duration:0.006s]
+2026-06-27 21:30:34,152 - monitoring.observability - INFO - Indexed agent lifecycle event agent_completed to agent-events-2026-06-27
+2026-06-27 21:30:34,152 - services.agent_executor - INFO - 🔍 FINALIZATION DEBUG: workspace_context=NONE, workspace_type=N/A, issue_number=6
+2026-06-27 21:30:34,153 - services.agent_executor - WARNING - ⚠️ FAILSAFE: workspace_context is None for senior_software_engineer, but agent completed. Checking for uncommitted changes...
+2026-06-27 21:30:34,153 - services.agent_executor - INFO - Skipping failsafe commit check for repair_test execution type
+2026-06-27 21:30:34,161 - services.agent_executor - INFO - Agent senior_software_engineer completed successfully (duration: 13109ms)
+2026-06-27 21:30:34,162 - pipeline.repair_cycle - INFO - Successfully parsed JSON directly. Keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list']
+2026-06-27 21:30:34,162 - pipeline.repair_cycle - INFO - Parsed test result JSON keys: ['passed', 'failed', 'warnings', 'failures', 'warning_list'], warnings type: <class 'int'>, warning_list type: <class 'list'>
+2026-06-27 21:30:34,166 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/24befc6f-b63f-4666-9144-d2126b3c20e7 [status:201 duration:0.003s]
+2026-06-27 21:30:34,166 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_execution_completed to decision-events-2026-06-27
+2026-06-27 21:30:34,166 - pipeline.repair_cycle - INFO - Checkpointing ci test cycle at iteration 1
+2026-06-27 21:30:34,167 - pipeline.repair_cycle_checkpoint - INFO - Checkpoint saved: iteration=1, test_type=ci, agent_calls=4
+2026-06-27 21:30:34,167 - pipeline.repair_cycle - INFO - Checkpoint saved successfully at iteration 1
+2026-06-27 21:30:34,167 - pipeline.repair_cycle - INFO - No test failures in test cycle iteration 1
+2026-06-27 21:30:34,167 - pipeline.repair_cycle - INFO - Test cycle completed successfully after 1 iterations
+2026-06-27 21:30:34,172 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/dc8ecfff-8cac-4fe7-9f01-dad907701e6c [status:201 duration:0.003s]
+2026-06-27 21:30:34,172 - monitoring.observability - INFO - Indexed decision event repair_cycle_test_cycle_completed to decision-events-2026-06-27
+2026-06-27 21:30:34,176 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/181d13e8-96b7-4806-b589-440a98307e5d [status:201 duration:0.003s]
+2026-06-27 21:30:34,176 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:34,181 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/1fcce91e-d0f2-4ff9-8bbc-958d0777eaec [status:201 duration:0.003s]
+2026-06-27 21:30:34,181 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:34,185 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/0c5ce4be-e549-48ff-a20d-a2360408f5b4 [status:201 duration:0.003s]
+2026-06-27 21:30:34,185 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:34,190 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/9f89e3c4-8812-4219-b0d0-b6bf655e0fa8 [status:201 duration:0.003s]
+2026-06-27 21:30:34,190 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:34,194 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/47cc0c6a-e882-4f08-b79b-8754d779c2fa [status:201 duration:0.003s]
+2026-06-27 21:30:34,195 - monitoring.observability - INFO - Indexed decision event performance_metric to decision-events-2026-06-27
+2026-06-27 21:30:34,199 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/decision-events-2026-06-27/_doc/b07f9f8d-7d9a-4cb4-832f-b43abf07a89e [status:201 duration:0.003s]
+2026-06-27 21:30:34,200 - monitoring.observability - INFO - Indexed decision event repair_cycle_completed to decision-events-2026-06-27
+2026-06-27 21:30:34,207 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/agent-events-2026-06-27/_doc/421ce0af-fe51-4a3c-8d71-96385a5e34de [status:201 duration:0.004s]
+2026-06-27 21:30:34,208 - monitoring.observability - INFO - Indexed agent lifecycle event agent_completed to agent-events-2026-06-27
+2026-06-27 21:30:34,229 - elastic_transport.transport - INFO - GET http://elasticsearch:9200/_ilm/policy/test-cycle-records-ilm-policy [status:200 duration:0.002s]
+2026-06-27 21:30:34,230 - elastic_transport.transport - INFO - GET http://elasticsearch:9200/_index_template/test-cycle-records-template [status:200 duration:0.001s]
+2026-06-27 21:30:34,231 - elastic_transport.transport - INFO - HEAD http://elasticsearch:9200/orchestrator-test-cycle-stats [status:200 duration:0.001s]
+2026-06-27 21:30:34,244 - elastic_transport.transport - INFO - POST http://elasticsearch:9200/decision-events-*/_search [status:200 duration:0.013s]
+2026-06-27 21:30:34,248 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/orchestrator-test-cycle-records-2026.06/_doc/cf065526-de40-4fa2-b6e0-6c110ed22d8f_ci_1_1 [status:201 duration:0.003s]
+2026-06-27 21:30:34,255 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/orchestrator-test-cycle-records-2026.06/_doc/cf065526-de40-4fa2-b6e0-6c110ed22d8f_compilation_1_1 [status:201 duration:0.007s]
+2026-06-27 21:30:34,259 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/orchestrator-test-cycle-records-2026.06/_doc/cf065526-de40-4fa2-b6e0-6c110ed22d8f_integration_1_1 [status:201 duration:0.003s]
+2026-06-27 21:30:34,262 - elastic_transport.transport - INFO - PUT http://elasticsearch:9200/orchestrator-test-cycle-records-2026.06/_doc/cf065526-de40-4fa2-b6e0-6c110ed22d8f_unit_1_1 [status:201 duration:0.003s]
+2026-06-27 21:30:34,262 - monitoring.test_cycle_recorder - INFO - Recorded 4 test-cycle iteration records for pipeline_run_id=cf065526-de40-4fa2-b6e0-6c110ed22d8f project=code-wrapper
+2026-06-27 21:30:34,262 - pipeline.repair_cycle_checkpoint - INFO - Cleared checkpoint file
+2026-06-27 21:30:34,262 - __main__ - INFO - Repair cycle completed successfully, checkpoint cleared
+2026-06-27 21:30:34,265 - __main__ - INFO - Result saved to Redis: repair_cycle:result:code-wrapper:6:cf065526-de40-4fa2-b6e0-6c110ed22d8f
+2026-06-27 21:30:34,265 - __main__ - INFO - Result summary: success=True, agent_calls=4, duration=97.8s
+2026-06-27 21:30:34,265 - __main__ - INFO - Repair cycle succeeded - all tests passed!
+2026-06-27 21:30:34,265 - __main__ - INFO - Repair cycle container runner exiting
