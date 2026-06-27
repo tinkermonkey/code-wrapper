@@ -99,20 +99,12 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
   });
 
   it.skipIf(!process.env.CLAUDE_CODE_OAUTH_TOKEN)('OAuth auth path', async () => {
-    const savedApiKey = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
-    try {
-      const events = await collectLive('claude', {
-        cwd,
-        prompt: 'respond with exactly the word hello',
-        maxTimeout: 60,
-      });
-      expect(events.filter(e => e.type === 'error')).toHaveLength(0);
-    } finally {
-      if (savedApiKey !== undefined) {
-        process.env.ANTHROPIC_API_KEY = savedApiKey;
-      }
-    }
+    const events = await collectLive('claude', {
+      cwd,
+      prompt: 'respond with exactly the word hello',
+      maxTimeout: 60,
+    });
+    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
 
   it.skipIf(!initialApiKey)('API key auth path', async () => {
