@@ -19,7 +19,14 @@ if (isAvailable) {
     prompt: 'hi',
     maxTimeout: 30,
   });
-  isAuthenticated = !authCheckEvents.some(e => e.type === 'error');
+  const authErrors = authCheckEvents.filter((e): e is ErrorEvent => e.type === 'error');
+  if (authErrors.length > 0) {
+    console.warn(
+      '[copilot.live] auth check failed — skipping suite:',
+      authErrors.map(e => `${e.code}: ${e.detail}`).join('; '),
+    );
+  }
+  isAuthenticated = authErrors.length === 0;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
