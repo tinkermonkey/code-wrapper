@@ -1,0 +1,63 @@
+# ============================================================================
+# Dockerfile.agent for code-wrapper project
+# ============================================================================
+# Builds the AGENT IMAGE for Claude agents to operate within.
+# Source code is mounted at runtime via:
+#   docker run -v /host/project:/workspace/code-wrapper ...
+# ============================================================================
+
+# ============================================================================
+# Stage 1: Base Environment from Orchestrator
+# ============================================================================
+FROM switchyard-orchestrator:latest
+
+# The base image already includes:
+# - Claude CLI (REQUIRED - must be present)
+# - Git CLI (REQUIRED - must be present)
+# - GitHub CLI (REQUIRED - must be present)
+# - Node.js 22 with npm
+# - Python 3.11
+# - Essential build tools
+# - procps package (provides 'ps' command needed by Claude CLI)
+
+USER root
+
+# ============================================================================
+# Stage 2: No Additional Runtimes Needed
+# ============================================================================
+# The base image already provides Node.js 22 and npm, which satisfies
+# the project's engines requirement of node >= 20.
+
+# ============================================================================
+# Stage 3: Pre-install Dependencies
+# ============================================================================
+WORKDIR /workspace/code-wrapper
+
+# Copy only the dependency manifest for installation.
+# Source code comes from the runtime mount.
+COPY package.json package-lock.json* ./
+
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --ignore-scripts
+
+# ============================================================================
+# Stage 4: Ownership and Permissions
+# ============================================================================
+RUN chown -R orchestrator:orchestrator /workspace/code-wrapper/node_modules
+
+# ============================================================================
+# Stage 5: Switch to Runtime User
+# ============================================================================
+USER orchestrator
+
+# ============================================================================
+# Stage 6: Verification (MANDATORY)
+# ============================================================================
+RUN claude --version && \
+    git --version && \
+    gh --version && \
+    node --version && \
+    npm --version && \
+    npx tsc --version
+
+CMD ["/bin/bash"]
