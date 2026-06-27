@@ -76,6 +76,37 @@ switch (scenario) {
     break;
   }
 
+  case 'session-resume': {
+    const resumeIdx = process.argv.indexOf('--resume');
+    const resumeId = resumeIdx >= 0 ? process.argv[resumeIdx + 1] : 'sess-resumed';
+    emit({ type: 'system', subtype: 'init', session_id: resumeId, model: 'claude-sonnet-4-6', tools: [] });
+    emit({ type: 'result', session_id: resumeId, usage: { input_tokens: 10, output_tokens: 5 } });
+    break;
+  }
+
+  case 'rate-limit': {
+    emit({ type: 'rate_limit_event', reset_at: '2026-01-01T00:00:00Z' });
+    process.exitCode = 1;
+    break;
+  }
+
+  case 'permission-request': {
+    emit({ type: 'system', subtype: 'init', session_id: 'sess-perm', model: 'claude-sonnet-4-6', tools: [] });
+    emit({ type: 'assistant', message: { content: [{ type: 'server_tool_use', id: 'stu-1', name: 'web_search', input: { query: 'test' } }] } });
+    emit({ type: 'result', session_id: 'sess-perm', usage: { input_tokens: 15, output_tokens: 3 } });
+    break;
+  }
+
+  case 'multi-block': {
+    emit({ type: 'system', subtype: 'init', session_id: 'sess-multi', model: 'claude-sonnet-4-6', tools: [] });
+    emit({ type: 'assistant', message: { content: [
+      { type: 'text', text: 'Here is the result:' },
+      { type: 'tool_use', id: 'tu-multi', name: 'Read', input: { path: '/test' } },
+    ] } });
+    emit({ type: 'result', session_id: 'sess-multi', usage: { input_tokens: 20, output_tokens: 10 } });
+    break;
+  }
+
   default: {
     process.stderr.write(`Unknown FAKE_SCENARIO: ${scenario}\n`);
     process.exitCode = 1;

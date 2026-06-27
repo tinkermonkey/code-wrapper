@@ -225,6 +225,57 @@ describe('timeouts', () => {
   });
 });
 
+// ---------------------------------------------------------------- new scenarios
+it('session-resume: ReadyEvent carries the session ID passed via --resume', async () => {
+  process.env.FAKE_SCENARIO = 'session-resume';
+  const events = await collect({ ...BASE, sessionId: 'sess-to-resume', isFirstMessage: false });
+  expect(events.find(e => e.type === 'ready')).toMatchObject({
+    type: 'ready',
+    sessionId: 'sess-to-resume',
+  });
+  expect(events.find(e => e.type === 'done')).toMatchObject({ type: 'done', sessionId: 'sess-to-resume' });
+  expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+});
+
+it('rate-limit: rate_limit_event on stdout surfaces as ErrorEvent { rate_limit }', async () => {
+  process.env.FAKE_SCENARIO = 'rate-limit';
+  const events = await collect(BASE);
+  expect(events.find(e => e.type === 'error' && (e as ErrorEvent).code === 'rate_limit')).toMatchObject({
+    type: 'error',
+    code: 'rate_limit',
+  });
+});
+
+it('permission-request: server_tool_use block inside assistant event becomes RawEvent', async () => {
+  process.env.FAKE_SCENARIO = 'permission-request';
+  const events = await collect(BASE);
+  const raw = events.find(
+    e => e.type === 'raw' && (e as RawEvent).rawSubtype === 'server_tool_use',
+  ) as RawEvent | undefined;
+  expect(raw).toBeDefined();
+  expect(raw).toMatchObject({ type: 'raw', rawType: 'assistant', rawSubtype: 'server_tool_use' });
+  expect(events.some(e => e.type === 'done')).toBe(true);
+  expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+});
+
+it('multi-block: single assistant message with text+tool_use emits both TextEvent and ToolUseEvent', async () => {
+  process.env.FAKE_SCENARIO = 'multi-block';
+  const events = await collect(BASE);
+  expect(events.some(e => e.type === 'text')).toBe(true);
+  expect(events.some(e => e.type === 'tool_use')).toBe(true);
+  expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+});
+
+it('unknown FAKE_SCENARIO writes stderr and exits with code 1', async () => {
+  process.env.FAKE_SCENARIO = 'no-such-scenario-xyz';
+  const events = await collect(BASE);
+  expect(events.find(e => e.type === 'error')).toMatchObject({
+    type: 'error',
+    code: 'nonzero_exit',
+    exitCode: 1,
+  });
+});
+
 // ---------------------------------------------------------------- copilot backend
 describe('copilot backend', () => {
   let copilotBinDir: string;
