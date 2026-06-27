@@ -4,13 +4,17 @@
  * Driven by FAKE_SCENARIO env var; inherits the env CliProcess passes to its child.
  *
  * Scenarios:
- *   golden-path    init → text → tool_use → tool_result → result
- *   stall          emits init, then stalls; exits cleanly on SIGTERM
- *   ignore-sigterm emits init, ignores SIGTERM, only SIGKILL kills it
- *   nonzero-exit   emits init, exits with code 1
- *   stale-session  writes stale-session message to stderr, exits 1
- *   api-retry      emits init + api_retry system event + result
- *   thinking       emits init + thinking block + text block + result
+ *   golden-path        init → text → tool_use → tool_result → result
+ *   stall              emits init, then stalls; exits cleanly on SIGTERM
+ *   ignore-sigterm     emits init, ignores SIGTERM, only SIGKILL kills it
+ *   nonzero-exit       emits init, exits with code 1
+ *   stale-session      writes stale-session message to stderr, exits 1
+ *   api-retry          emits init + api_retry system event + result
+ *   thinking           emits init + thinking block + text block + result
+ *   session-resume     accepts --resume <id>, emits init with that session ID + result
+ *   rate-limit         emits rate_limit_event on stdout, exits 1
+ *   permission-request emits init + assistant with server_tool_use + result
+ *   multi-block        emits init + assistant with text+tool_use in one message + result
  */
 
 const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\n');
