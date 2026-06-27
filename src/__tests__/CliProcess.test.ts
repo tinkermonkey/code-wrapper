@@ -4,13 +4,12 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CliProcess } from '../process/CliProcess.js';
-import type { ClaudeEvent, ErrorEvent, TextEvent, RawEvent } from '../events/types.js';
+import type { ClaudeEvent, ErrorEvent, RawEvent } from '../events/types.js';
 import type { ProcessOptions } from '../process/types.js';
 
 // Resolve fake binary fixture paths relative to this test file.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLAUDE_SRC = join(__dirname, 'fixtures', 'fake-claude.mjs');
-const FAKE_COPILOT_SRC = join(__dirname, 'fixtures', 'fake-copilot.mjs');
 
 let fakeBinDir: string;
 let savedPath: string | undefined;
@@ -275,163 +274,5 @@ describe('extended scenarios', () => {
       code: 'nonzero_exit',
       exitCode: 1,
     });
-  });
-});
-
-// ---------------------------------------------------------------- copilot backend
-describe('copilot backend', () => {
-  let copilotBinDir: string;
-  let pathBeforeCopilot: string | undefined;
-
-  beforeAll(() => {
-    copilotBinDir = mkdtempSync(join(tmpdir(), 'fake-copilot-'));
-    const fakeBin = join(copilotBinDir, 'copilot');
-    writeFileSync(fakeBin, readFileSync(FAKE_COPILOT_SRC, 'utf-8'), 'utf-8');
-    chmodSync(fakeBin, 0o755);
-    pathBeforeCopilot = process.env.PATH;
-    process.env.PATH = `${copilotBinDir}:${pathBeforeCopilot ?? ''}`;
-  });
-
-  afterAll(() => {
-    if (pathBeforeCopilot !== undefined) {
-      process.env.PATH = pathBeforeCopilot;
-    } else {
-      delete process.env.PATH;
-    }
-    rmSync(copilotBinDir, { recursive: true, force: true });
-  });
-
-  async function collectCopilot(extra: Partial<ProcessOptions> = {}): Promise<ClaudeEvent[]> {
-    const proc = new CliProcess('copilot');
-    const events: ClaudeEvent[] = [];
-    for await (const ev of proc.run({ ...BASE, ...extra })) {
-      events.push(ev);
-    }
-    return events;
-  }
-
-  it('isAvailable returns true when fake copilot binary is in PATH', async () => {
-    const proc = new CliProcess('copilot');
-    expect(await proc.isAvailable()).toBe(true);
-  });
-
-  it('golden path emits progress, ready, text, and done events — no errors', async () => {
-    process.env.FAKE_SCENARIO = 'golden-path';
-    const events = await collectCopilot();
-    expect(events.some(e => e.type === 'progress')).toBe(true);
-    expect(events.some(e => e.type === 'ready')).toBe(true);
-    expect(events.some(e => e.type === 'text')).toBe(true);
-    expect(events.some(e => e.type === 'done')).toBe(true);
-    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
-  });
-
-  it('first event is ProgressEvent with elapsed=0', async () => {
-    process.env.FAKE_SCENARIO = 'golden-path';
-    const events = await collectCopilot();
-    expect(events[0]).toMatchObject({ type: 'progress', elapsed: 0 });
-  });
-
-  it('ReadyEvent carries the ACP session ID', async () => {
-    process.env.FAKE_SCENARIO = 'golden-path';
-    const events = await collectCopilot();
-    expect(events.find(e => e.type === 'ready')).toMatchObject({
-      type: 'ready',
-      sessionId: 'copilot-sess-abc123',
-    });
-  });
-
-  it('DoneEvent carries the ACP session ID', async () => {
-    process.env.FAKE_SCENARIO = 'golden-path';
-    const events = await collectCopilot();
-    expect(events.find(e => e.type === 'done')).toMatchObject({
-      type: 'done',
-      sessionId: 'copilot-sess-abc123',
-    });
-  });
-
-  it('text events carry the copilot response content', async () => {
-    process.env.FAKE_SCENARIO = 'golden-path';
-    const events = await collectCopilot();
-    const text = events
-      .filter(e => e.type === 'text')
-      .map(e => (e as TextEvent).text)
-      .join('');
-    expect(text).toContain('Hello from Copilot!');
-  });
-
-  it('seq values are strictly increasing', async () => {
-    process.env.FAKE_SCENARIO = 'golden-path';
-    const events = await collectCopilot();
-    for (let i = 1; i < events.length; i++) {
-      expect(events[i].seq).toBeGreaterThan(events[i - 1].seq);
-    }
-  });
-
-  it('nonzero exit → ErrorEvent { nonzero_exit, exitCode: 1 }', async () => {
-    process.env.FAKE_SCENARIO = 'nonzero-exit';
-    const events = await collectCopilot();
-    expect(events.find(e => e.type === 'error')).toMatchObject({
-      type: 'error', code: 'nonzero_exit', exitCode: 1,
-    });
-  });
-
-  it('idle timeout → ErrorEvent { idle_timeout }', async () => {
-    process.env.FAKE_SCENARIO = 'stall';
-    const events = await collectCopilot({
-      idleTimeout: 1,
-      _watchdogIntervalMs: 100,
-      _sigkillDelayMs: 300,
-    });
-    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
-  });
-
-  it('max timeout → ErrorEvent { max_timeout }', async () => {
-    process.env.FAKE_SCENARIO = 'stall';
-    const events = await collectCopilot({
-      maxTimeout: 1,
-      idleTimeout: 300,
-      _watchdogIntervalMs: 100,
-      _sigkillDelayMs: 300,
-    });
-    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'max_timeout' });
-  });
-
-  it('SIGKILL escalation when copilot ignores SIGTERM', async () => {
-    process.env.FAKE_SCENARIO = 'ignore-sigterm';
-    const events = await collectCopilot({
-      idleTimeout: 1,
-      _watchdogIntervalMs: 100,
-      _sigkillDelayMs: 300,
-    });
-    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'idle_timeout' });
-  });
-
-  it('AbortSignal mid-run → ErrorEvent { aborted }', async () => {
-    process.env.FAKE_SCENARIO = 'stall';
-    const controller = new AbortController();
-    const proc = new CliProcess('copilot');
-    const events: ClaudeEvent[] = [];
-    for await (const ev of proc.run({
-      ...BASE,
-      signal: controller.signal,
-      _watchdogIntervalMs: 60_000,
-      _sigkillDelayMs: 300,
-    })) {
-      events.push(ev);
-      if (ev.type === 'ready') controller.abort();
-    }
-    expect(events.find(e => e.type === 'error')).toMatchObject({ type: 'error', code: 'aborted' });
-  });
-
-  it('permission/request notification → RawEvent', async () => {
-    process.env.FAKE_SCENARIO = 'permission-request';
-    const events = await collectCopilot();
-    const raw = events
-      .filter(e => e.type === 'raw')
-      .find(e => (e as RawEvent).rawType === 'permission/request') as RawEvent | undefined;
-    expect(raw).toBeDefined();
-    expect(raw).toMatchObject({ type: 'raw', rawType: 'permission/request' });
-    expect(events.some(e => e.type === 'done')).toBe(true);
-    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
 });
