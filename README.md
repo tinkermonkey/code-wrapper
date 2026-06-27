@@ -2,14 +2,14 @@
 
 Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the three universal concerns:
 
-1. **Process launch** — spawn `claude` or `gh copilot`, deliver prompt via stdin, enforce idle and max timeouts, tear down cleanly
+1. **Process launch** — spawn `claude` or `copilot`, deliver prompt via stdin, enforce idle and max timeouts, tear down cleanly
 2. **Event normalization** — parse `--output-format stream-json` output into a typed `ClaudeEvent` stream with a monotonic `seq` on every event
 3. **Session management** — track CLI session IDs across turns, persist them to disk, detect and recover from stale sessions
 
 ## Requirements
 
 - Node.js ≥ 20
-- `claude` CLI in PATH (or `gh` for Copilot, once implemented)
+- `claude` CLI in PATH, or `copilot` for GitHub Copilot (`gh extension install github/gh-copilot`)
 
 ## Install
 
@@ -105,7 +105,7 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 | `done` | `sessionId`, `usage?` | Run complete — store `sessionId` for next turn |
 | `error` | `code: ErrorCode`, `detail`, `exitCode?` | See ErrorCode table |
 | `raw` | `rawType`, `rawSubtype?`, `data: unknown` | Unrecognized CLI event — nothing is silently discarded |
-| `progress` | `elapsed: number` | Defined; not yet emitted |
+| `progress` | `elapsed: number` | Emitted immediately on spawn (`elapsed: 0`) and on every watchdog tick (default every 5 s) |
 
 ### ErrorCode values
 
@@ -119,6 +119,8 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 | `spawn_error` | Process could not be started |
 | `parse_error` | Line starts with `{` but is not valid JSON |
 | `cli_error` | Inline `error`/`error_detail`/`error_event` from the CLI stream |
+| `aborted` | Run cancelled via AbortSignal |
+| `internal_error` | Unexpected exception in the generator body |
 
 ## ProcessOptions
 
@@ -133,6 +135,7 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 | `isFirstMessage` | `true` | `true` → `--session-id`; `false` → `--resume` |
 | `idleTimeout` | `300` | Seconds of stdout silence before kill |
 | `maxTimeout` | `3600` | Hard ceiling in seconds |
+| `signal` | — | `AbortSignal` to cancel the in-flight process; yields `error { code: 'aborted' }` |
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for full design details, interface specs, and use-case mapping.
 
