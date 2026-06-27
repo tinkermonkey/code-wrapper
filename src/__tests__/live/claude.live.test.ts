@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { CliProcess } from '../../process/CliProcess.js';
 import type { ReadyEvent, DoneEvent, ErrorEvent, ClaudeEvent } from '../../events/types.js';
@@ -9,9 +9,27 @@ import {
 } from '../helpers/live-helpers.js';
 
 const { claudeAvailable, hasCredentials } = await getLiveCredentials('claude');
+// Captured at module load before any beforeEach transforms process.env
+const initialApiKey = process.env.ANTHROPIC_API_KEY;
 const cwd = tmpdir();
 
 describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => {
+  let savedApiKey: string | undefined;
+
+  beforeEach(() => {
+    if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+      savedApiKey = process.env.ANTHROPIC_API_KEY;
+      delete process.env.ANTHROPIC_API_KEY;
+    }
+  });
+
+  afterEach(() => {
+    if (savedApiKey !== undefined) {
+      process.env.ANTHROPIC_API_KEY = savedApiKey;
+      savedApiKey = undefined;
+    }
+  });
+
   it('golden path', async () => {
     const events = await collectLive('claude', {
       cwd,
@@ -97,9 +115,10 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
     }
   });
 
-  it.skipIf(!process.env.ANTHROPIC_API_KEY)('API key auth path', async () => {
+  it.skipIf(!initialApiKey)('API key auth path', async () => {
     const savedOauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
     delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    process.env.ANTHROPIC_API_KEY = initialApiKey!;
     try {
       const events = await collectLive('claude', {
         cwd,
