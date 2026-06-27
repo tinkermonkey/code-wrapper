@@ -274,7 +274,7 @@ export class CliProcess {
     } catch (err) {
       yield mk({
         type: 'error',
-        code: 'spawn_error',
+        code: 'internal_error',
         detail: err instanceof Error ? err.message : String(err),
       });
     } finally {

@@ -225,6 +225,7 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  *   permission/request                      → RawEvent
  *   ACP error response (msg.error)          → ErrorEvent { code: 'cli_error' }
  *   Other responses/notifications           → RawEvent (zero-loss)
+ *   Unrecognized structure                  → RawEvent { rawType: 'acp/unknown' }
  */
 export function createCopilotAcpParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
   let sessionUuid = '';
@@ -306,6 +307,11 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
       return events;
     }
 
+    // Unrecognized structure — emit as raw so no message is ever silently lost
+    events.push({
+      seq: seq++, timestamp, type: 'raw',
+      rawType: 'acp/unknown', data: msg as unknown,
+    } satisfies RawEvent);
     return events;
   };
 }

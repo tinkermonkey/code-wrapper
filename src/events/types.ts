@@ -83,15 +83,16 @@ export interface DoneEvent extends BaseEvent {
 }
 
 export type ErrorCode =
-  | 'idle_timeout'   // stdout silence exceeded idleTimeout
-  | 'max_timeout'    // wall-clock ceiling exceeded
-  | 'nonzero_exit'   // process exited with non-zero code
-  | 'rate_limit'     // rate limit hit (inline event or stderr pattern)
-  | 'spawn_error'    // process could not be started
-  | 'stale_session'  // stderr: "No conversation found with session ID"
-  | 'parse_error'    // line starts with '{' but is not valid JSON
-  | 'cli_error'      // inline error/error_detail/error_event from the CLI stream
-  | 'aborted';       // cancelled via AbortSignal
+  | 'idle_timeout'    // stdout silence exceeded idleTimeout
+  | 'max_timeout'     // wall-clock ceiling exceeded
+  | 'nonzero_exit'    // process exited with non-zero code
+  | 'rate_limit'      // rate limit hit (inline event or stderr pattern)
+  | 'spawn_error'     // process could not be started (ENOENT, EACCES, etc.)
+  | 'internal_error'  // unexpected exception in generator body (programmer bug)
+  | 'stale_session'   // stderr: "No conversation found with session ID"
+  | 'parse_error'     // line starts with '{' but is not valid JSON
+  | 'cli_error'       // inline error/error_detail/error_event from the CLI stream
+  | 'aborted';        // cancelled via AbortSignal
 
 export interface ErrorEvent extends BaseEvent {
   type: 'error';
