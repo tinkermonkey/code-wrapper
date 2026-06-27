@@ -110,6 +110,8 @@ export interface RawEvent extends BaseEvent {
   data: unknown;
 }
 
+export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
+
 export type ClaudeEvent =
   | TextEvent
   | ThinkingEvent

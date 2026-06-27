@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { ClaudeEvent, ErrorEvent, ProgressEvent } from '../events/types.js';
+import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent } from '../events/types.js';
 import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
@@ -200,7 +200,7 @@ export class CliProcess {
       }
     }, _watchdogIntervalMs);
 
-    const mk = (e: Omit<ClaudeEvent, 'seq' | 'timestamp'>): ClaudeEvent =>
+    const mk = (e: DistributiveOmit<ClaudeEvent, 'seq' | 'timestamp'>): ClaudeEvent =>
       ({ ...e, seq: seq++, timestamp: Date.now() } as ClaudeEvent);
 
     try {
