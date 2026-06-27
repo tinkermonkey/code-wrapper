@@ -65,6 +65,14 @@ export class CliProcess {
     const env: NodeJS.ProcessEnv = { ...process.env };
     delete env['CLAUDECODE'];
 
+    // Prefer OAuth token over API key; pass only one auth credential to the
+    // subprocess so the CLI auth path is unambiguous.
+    if (env['CLAUDE_CODE_OAUTH_TOKEN']) {
+      delete env['ANTHROPIC_API_KEY'];
+    } else {
+      delete env['CLAUDE_CODE_OAUTH_TOKEN'];
+    }
+
     const proc = spawn(
       this.backend === 'claude' ? 'claude' : 'gh',
       args,
