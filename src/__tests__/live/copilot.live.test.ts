@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { tmpdir } from 'node:os';
 import { CliProcess } from '../../process/CliProcess.js';
-import type { ReadyEvent, ErrorEvent, TextEvent, ClaudeEvent } from '../../events/types.js';
+import type { ReadyEvent, ErrorEvent, TextEvent, ClaudeEvent, ErrorCode } from '../../events/types.js';
 import {
   collectLive,
   assertEventStreamStructure,
 } from '../helpers/live-helpers.js';
 
 const cwd = tmpdir();
+
+// Error codes that indicate an actual auth failure vs transient issues
+const AUTH_ERROR_CODES = new Set<ErrorCode>(['cli_error', 'spawn_error']);
 
 const copilot = new CliProcess('copilot');
 const isAvailable = await copilot.isAvailable();
@@ -19,7 +22,16 @@ if (isAvailable) {
     prompt: 'hi',
     maxTimeout: 30,
   });
-  const authErrors = authCheckEvents.filter((e): e is ErrorEvent => e.type === 'error');
+  const allErrors = authCheckEvents.filter((e): e is ErrorEvent => e.type === 'error');
+  const authErrors = allErrors.filter(e => AUTH_ERROR_CODES.has(e.code));
+  const nonAuthErrors = allErrors.filter(e => !AUTH_ERROR_CODES.has(e.code));
+
+  if (nonAuthErrors.length > 0) {
+    console.warn(
+      '[copilot.live] non-auth errors during auth probe (suite will still run):',
+      nonAuthErrors.map(e => `${e.code}: ${e.detail}`).join('; '),
+    );
+  }
   if (authErrors.length > 0) {
     console.warn(
       '[copilot.live] auth check failed — skipping suite:',
