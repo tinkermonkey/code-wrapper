@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, ErrorEvent, ProgressEvent } from '../events/types.js';
-import { parseCliLine } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
@@ -11,7 +11,12 @@ const STALE_SESSION_RE = /no conversation found with session id/i;
 
 /**
  * Spawns an AI coding agent CLI (Claude Code or GitHub Copilot), delivers a
- * prompt via stdin, and yields a normalized stream of ClaudeEvents.
+ * prompt, and yields a normalized stream of ClaudeEvents.
+ *
+ * Claude Code: prompt via stdin; stream-json output parsed into typed events.
+ * Copilot: ACP protocol (copilot --acp --stdio); NDJSON JSON-RPC over
+ *   stdin/stdout; initialize → session/new → session/prompt handshake;
+ *   stateful parser produced by createCopilotAcpParser() tracks sessionUuid.
  *
  * The caller is responsible for routing events — this class has no opinion
  * on whether they go to a WebSocket, Redis, SSE response, or an in-process
@@ -24,7 +29,7 @@ export class CliProcess {
 
   /** Returns true if the backend binary is found in PATH */
   async isAvailable(): Promise<boolean> {
-    const bin = this.backend === 'claude' ? 'claude' : 'gh';
+    const bin = this.backend === 'claude' ? 'claude' : 'copilot';
     const r = spawnSync('which', [bin], { stdio: 'pipe' });
     return r.status === 0;
   }
@@ -74,13 +79,26 @@ export class CliProcess {
     }
 
     const proc = spawn(
-      this.backend === 'claude' ? 'claude' : 'gh',
+      this.backend === 'claude' ? 'claude' : 'copilot',
       args,
       { cwd, stdio: ['pipe', 'pipe', 'pipe'], env },
     );
 
     this.activeProc = proc;
-    proc.stdin!.write(prompt);
+
+    if (this.backend === 'copilot') {
+      // ACP handshake: write NDJSON JSON-RPC messages to stdin then close.
+      // The server responds to each over stdout; the readline handler below
+      // parses them via createCopilotAcpParser().
+      const acpWrite = (msg: object): void => {
+        proc.stdin!.write(JSON.stringify(msg) + '\n');
+      };
+      acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-01', capabilities: {} } });
+      acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
+      acpWrite({ jsonrpc: '2.0', id: 3, method: 'session/prompt', params: { prompt } });
+    } else {
+      proc.stdin!.write(prompt);
+    }
     proc.stdin!.end();
 
     let seq = 0;
@@ -130,10 +148,14 @@ export class CliProcess {
       pushEvent(null);
     });
 
+    // Copilot: stateful ACP parser tracks sessionUuid across lines.
+    // Claude: stateless parseCliLine.
+    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
+
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
       lastOutputAt = Date.now();
-      for (const event of parseCliLine(line, seq)) {
+      for (const event of parseLine(line, seq)) {
         seq = event.seq + 1;
         pushEvent(event);
       }
@@ -197,6 +219,11 @@ export class CliProcess {
       // Exit precedence (highest to lowest):
       //   spawn_error > stale_session > rate_limit > aborted
       //   > idle_timeout > max_timeout > nonzero_exit > clean
+      //
+      // ACP caveat: STALE_SESSION_RE and RATE_LIMIT_RE scan stderr only.
+      // Copilot (ACP mode) surfaces stale sessions and rate limits as JSON-RPC
+      // error responses on stdout — they arrive as ErrorEvent { code: 'cli_error' }.
+      // runWithRecovery() will not auto-retry them; callers must inspect detail.
 
       if (spawnError !== null) {
         yield spawnError;
@@ -272,7 +299,7 @@ export class CliProcess {
 
   private buildArgs(options: ProcessOptions): string[] {
     if (this.backend === 'copilot') {
-      throw new Error('Copilot backend is not yet implemented');
+      return this.buildCopilotArgs(options);
     }
 
     const {
@@ -294,6 +321,25 @@ export class CliProcess {
 
     if (agent) args.unshift('--agent', agent);
 
+    return args;
+  }
+
+  /**
+   * Build args for the GitHub Copilot CLI (`copilot` npm package) in ACP mode.
+   *
+   * Invocation: copilot --acp --stdio
+   * The prompt is NOT passed as a flag — it is sent as a session/prompt
+   * NDJSON message over stdin in run() after the initialize/session/new handshake.
+   *
+   * Session resume: --resume=<uuid> (the UUID comes from the ReadyEvent.sessionId
+   * produced by the session/new response on the first message).
+   */
+  private buildCopilotArgs(options: ProcessOptions): string[] {
+    const { sessionId, isFirstMessage = true, skipPermissions = false, agent } = options;
+    const args = ['--acp', '--stdio'];
+    if (skipPermissions) args.push('--allow-all-tools');
+    if (agent) args.push('--agent', agent);
+    if (sessionId && !isFirstMessage) args.push(`--resume=${sessionId}`);
     return args;
   }
 }
