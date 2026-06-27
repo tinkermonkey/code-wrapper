@@ -93,8 +93,12 @@ export class CliProcess {
       const acpWrite = (msg: object): void => {
         proc.stdin!.write(JSON.stringify(msg) + '\n');
       };
+      const isResume = !!options.sessionId && options.isFirstMessage === false;
       acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-01', capabilities: {} } });
-      acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
+      // session/new creates a fresh session; skip on resume (--resume=<uuid> in args)
+      if (!isResume) {
+        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
+      }
       acpWrite({ jsonrpc: '2.0', id: 3, method: 'session/prompt', params: { prompt } });
     } else {
       proc.stdin!.write(prompt);

@@ -239,6 +239,12 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
     try {
       msg = JSON.parse(line);
     } catch {
+      if (line.trimStart().startsWith('{')) {
+        return [{
+          seq, timestamp, type: 'error', code: 'parse_error',
+          detail: `Malformed JSON: ${line.slice(0, 200)}`,
+        } satisfies ErrorEvent];
+      }
       return [{ seq, timestamp, type: 'text', text: line + '\n' } satisfies TextEvent];
     }
 
