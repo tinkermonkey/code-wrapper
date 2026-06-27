@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCliLine } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
 import type {
   ReadyEvent,
   RetryEvent,
@@ -302,5 +302,44 @@ describe('parseCliLine', () => {
       7,
     );
     expect(evs.map(e => e.seq)).toEqual([7, 8, 9]);
+  });
+});
+
+describe('createCopilotAcpParser', () => {
+  it('empty line returns []', () => {
+    const parse = createCopilotAcpParser();
+    expect(parse('', 0)).toEqual([]);
+  });
+
+  it('whitespace-only line returns []', () => {
+    const parse = createCopilotAcpParser();
+    expect(parse('   \t  ', 0)).toEqual([]);
+  });
+
+  it('line starting with { that is not valid JSON → parse_error ErrorEvent', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('{bad json', 0) as [ErrorEvent];
+    expect(ev.type).toBe('error');
+    expect(ev.code).toBe('parse_error');
+    expect(ev.detail).toContain('{bad json');
+  });
+
+  it('plaintext line (no { prefix) → TextEvent with trailing newline', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('Starting copilot...', 0) as [TextEvent];
+    expect(ev.type).toBe('text');
+    expect(ev.text).toBe('Starting copilot...\n');
+  });
+
+  it('seq parameter is respected on parse_error', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('{truncated', 5);
+    expect(ev.seq).toBe(5);
+  });
+
+  it('seq parameter is respected on TextEvent', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('plain text', 3);
+    expect(ev.seq).toBe(3);
   });
 });

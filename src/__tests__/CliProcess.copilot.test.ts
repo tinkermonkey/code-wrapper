@@ -179,6 +179,26 @@ describe('AbortSignal', () => {
   });
 });
 
+// ---------------------------------------------------------------- resume handshake
+describe('resume handshake', () => {
+  it('skips session/new and uses id=2 for session/prompt when isFirstMessage is false', async () => {
+    process.env.FAKE_SCENARIO = 'resume';
+    const events = await collect({ sessionId: 'test-sess-uuid', isFirstMessage: false });
+    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+    expect(events.some(e => e.type === 'done')).toBe(true);
+  });
+
+  it('sends session/new (produces ReadyEvent) when isFirstMessage is true (default)', async () => {
+    process.env.FAKE_SCENARIO = 'golden-path';
+    const events = await collect({ sessionId: 'existing-sess', isFirstMessage: true });
+    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+    expect(events.find(e => e.type === 'ready')).toMatchObject({
+      type: 'ready',
+      sessionId: 'copilot-sess-abc123',
+    });
+  });
+});
+
 // ---------------------------------------------------------------- extended scenarios
 it('permission/request notification → RawEvent', async () => {
   process.env.FAKE_SCENARIO = 'permission-request';

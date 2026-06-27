@@ -5,6 +5,7 @@
  *
  * Scenarios (FAKE_SCENARIO env var):
  *   golden-path        full handshake + two message_delta chunks + session.idle
+ *   resume             resume handshake (no session/new); validates --resume=<uuid> arg and id=2 on session/prompt
  *   stall              full handshake + one message_delta, then stalls; exits on SIGTERM
  *   ignore-sigterm     full handshake + one message_delta, then stalls; ignores SIGTERM
  *   nonzero-exit       full handshake, then exits with code 1
@@ -27,8 +28,26 @@ for await (const line of rl) {
   if (msg.method === 'initialize') {
     emit({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2025-01', capabilities: {} } });
   } else if (msg.method === 'session/new') {
+    if (scenario === 'resume') {
+      process.stderr.write('resume scenario: unexpected session/new received\n');
+      process.exitCode = 1;
+      process.exit(1);
+    }
     emit({ jsonrpc: '2.0', id: msg.id, result: { sessionId: SESSION_ID } });
   } else if (msg.method === 'session/prompt') {
+    if (scenario === 'resume') {
+      const resumeArg = process.argv.find(a => a.startsWith('--resume='));
+      if (!resumeArg) {
+        process.stderr.write('resume scenario: --resume=<uuid> not found in argv\n');
+        process.exitCode = 1;
+        process.exit(1);
+      }
+      if (msg.id !== 2) {
+        process.stderr.write(`resume scenario: expected session/prompt id=2, got id=${msg.id}\n`);
+        process.exitCode = 1;
+        process.exit(1);
+      }
+    }
     emit({ jsonrpc: '2.0', id: msg.id, result: {} });
     promptReceived = true;
 
@@ -57,6 +76,11 @@ if (promptReceived && scenario !== 'stall' && scenario !== 'ignore-sigterm') {
       emit({ jsonrpc: '2.0', method: 'session/update', params: { type: 'assistant.message_delta', data: { deltaContent: 'Hello from Copilot!\n' } } });
       emit({ jsonrpc: '2.0', method: 'session/update', params: { type: 'assistant.message_delta', data: { deltaContent: 'Here is the answer.\n' } } });
       emit({ jsonrpc: '2.0', method: 'session.idle', params: { sessionId: SESSION_ID } });
+      break;
+    }
+    case 'resume': {
+      emit({ jsonrpc: '2.0', method: 'session/update', params: { type: 'assistant.message_delta', data: { deltaContent: 'Resumed response.\n' } } });
+      emit({ jsonrpc: '2.0', method: 'session.idle', params: {} });
       break;
     }
     case 'permission-request': {
