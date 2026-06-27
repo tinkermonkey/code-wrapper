@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { tmpdir } from 'node:os';
 import { CliProcess } from '../../process/CliProcess.js';
-import type { ReadyEvent, DoneEvent, ErrorEvent } from '../../events/types.js';
+import type { ReadyEvent, DoneEvent, ErrorEvent, ClaudeEvent } from '../../events/types.js';
 import {
   collectLive,
   assertEventStreamStructure,
@@ -32,9 +32,10 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
       prompt: 'respond with exactly the word hello',
       maxTimeout: 60,
     });
-    const ready = events.find(e => e.type === 'ready') as ReadyEvent;
-    expect(ready.sessionId.length).toBeGreaterThan(0);
-    expect(ready.model).toBeTruthy();
+    const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
+    expect(ready).toBeDefined();
+    expect(ready!.sessionId.length).toBeGreaterThan(0);
+    expect(ready!.model).toBeTruthy();
   });
 
   it('session resume', async () => {
@@ -62,7 +63,7 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
   it('AbortSignal mid-run', async () => {
     const controller = new AbortController();
     const proc = new CliProcess('claude');
-    const events: import('../../events/types.js').ClaudeEvent[] = [];
+    const events: ClaudeEvent[] = [];
     for await (const ev of proc.run({
       cwd,
       prompt: 'write a comprehensive multi-section essay about the entire history of computing, covering at least ten major eras in detail',
