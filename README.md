@@ -135,3 +135,40 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 | `maxTimeout` | `3600` | Hard ceiling in seconds |
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for full design details, interface specs, and use-case mapping.
+
+## Testing
+
+### Fast suite
+
+```sh
+npm test
+```
+
+Runs offline unit tests. No credentials, no live binaries, no network access required.
+
+### Live suite
+
+```sh
+npm run test:live
+```
+
+Exercises real CLI processes. Prerequisites:
+
+**Claude tests** — requires all of:
+- `claude` CLI in PATH
+- `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` set in the environment
+
+**Copilot tests** — requires all of:
+- `copilot` CLI installed (`gh extension install github/gh-copilot`)
+- Active GitHub Copilot session (`gh auth login`)
+
+#### Graceful skipping
+
+When prerequisites are absent the relevant `describe` block is skipped — it does **not** fail. Seeing output like `0 tests passed, 6 skipped` is expected and correct when the CLI is unavailable or credentials are not set.
+
+### Running a single test file
+
+```sh
+npx vitest run src/__tests__/live/claude.live.test.ts --config vitest.config.live.ts
+npx vitest run src/__tests__/live/copilot.live.test.ts --config vitest.config.live.ts
+```
