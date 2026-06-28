@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CliProcess } from '../process/CliProcess.js';
-import type { ClaudeEvent, ErrorEvent, TextEvent, RawEvent } from '../events/types.js';
+import type { ClaudeEvent, ErrorEvent, TextEvent, RawEvent, ReadyEvent, DoneEvent } from '../events/types.js';
 import type { ProcessOptions } from '../process/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -185,7 +185,10 @@ describe('resume handshake', () => {
     process.env.FAKE_SCENARIO = 'resume';
     const events = await collect({ sessionId: 'test-sess-uuid', isFirstMessage: false });
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+    expect(events.some(e => e.type === 'ready')).toBe(true);
+    expect((events.find(e => e.type === 'ready') as ReadyEvent).sessionId).toBe('test-sess-uuid');
     expect(events.some(e => e.type === 'done')).toBe(true);
+    expect((events.find(e => e.type === 'done') as DoneEvent).sessionId).toBe('test-sess-uuid');
   });
 
   it('sends session/new (produces ReadyEvent) when isFirstMessage is true (default)', async () => {

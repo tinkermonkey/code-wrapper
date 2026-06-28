@@ -35,10 +35,10 @@ WORKDIR /workspace/code-wrapper
 
 # Copy only the dependency manifest for installation.
 # Source code comes from the runtime mount.
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --ignore-scripts
+    npm ci --ignore-scripts
 
 # ============================================================================
 # Stage 4: Ownership and Permissions

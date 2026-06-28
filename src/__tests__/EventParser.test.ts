@@ -324,11 +324,11 @@ describe('createCopilotAcpParser', () => {
     expect(ev.detail).toContain('{bad json');
   });
 
-  it('plaintext line (no { prefix) → TextEvent with trailing newline', () => {
+  it('plaintext line (no { prefix) → parse_error ErrorEvent', () => {
     const parse = createCopilotAcpParser();
-    const [ev] = parse('Starting copilot...', 0) as [TextEvent];
-    expect(ev.type).toBe('text');
-    expect(ev.text).toBe('Starting copilot...\n');
+    const [ev] = parse('Starting copilot...', 0) as [ErrorEvent];
+    expect(ev.type).toBe('error');
+    expect(ev.code).toBe('parse_error');
   });
 
   it('seq parameter is respected on parse_error', () => {

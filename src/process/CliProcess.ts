@@ -86,6 +86,8 @@ export class CliProcess {
 
     this.activeProc = proc;
 
+    const isResume = this.backend === 'copilot' && !!options.sessionId && options.isFirstMessage === false;
+
     if (this.backend === 'copilot') {
       // ACP handshake: write NDJSON JSON-RPC messages to stdin then close.
       // The server responds to each over stdout; the readline handler below
@@ -93,13 +95,12 @@ export class CliProcess {
       const acpWrite = (msg: object): void => {
         proc.stdin!.write(JSON.stringify(msg) + '\n');
       };
-      const isResume = !!options.sessionId && options.isFirstMessage === false;
-      let nextId = 2;
+      const sessionPromptId = isResume ? 2 : 3;
       acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-01', capabilities: {} } });
       if (!isResume) {
-        acpWrite({ jsonrpc: '2.0', id: nextId++, method: 'session/new', params: { cwd } });
+        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
       }
-      acpWrite({ jsonrpc: '2.0', id: nextId, method: 'session/prompt', params: { prompt } });
+      acpWrite({ jsonrpc: '2.0', id: sessionPromptId, method: 'session/prompt', params: { prompt } });
     } else {
       proc.stdin!.write(prompt);
     }
@@ -154,7 +155,7 @@ export class CliProcess {
 
     // Copilot: stateful ACP parser tracks sessionUuid across lines.
     // Claude: stateless parseCliLine.
-    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
+    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser(isResume ? options.sessionId : undefined) : parseCliLine;
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
