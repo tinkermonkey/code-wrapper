@@ -41,6 +41,13 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts
 
 # ============================================================================
+# Stage 3.5: Install Copilot CLI
+# ============================================================================
+# gh extension install places the copilot binary on PATH for all users.
+# Must run as root before the USER switch.
+RUN gh extension install github/gh-copilot
+
+# ============================================================================
 # Stage 4: Ownership and Permissions
 # ============================================================================
 RUN chown -R orchestrator:orchestrator /workspace/code-wrapper/node_modules
@@ -56,6 +63,7 @@ USER orchestrator
 RUN claude --version && \
     git --version && \
     gh --version && \
+    copilot --version && \
     node --version && \
     npm --version && \
     npx tsc --version
