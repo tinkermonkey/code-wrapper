@@ -62,7 +62,7 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
       prompt: 'respond with exactly the word hello',
       maxTimeout: 60,
     });
-    expect(firstEvents.filter(e => e.type === 'error')).toHaveLength(0);
+    expect(firstEvents.filter(e => e.type === 'error' && (e as ErrorEvent).code !== 'rate_limit')).toHaveLength(0);
     const firstDone = firstEvents.find(e => e.type === 'done') as DoneEvent;
     const sessionId = firstDone.sessionId;
 
@@ -73,7 +73,7 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
       isFirstMessage: false,
       maxTimeout: 60,
     });
-    expect(secondEvents.filter(e => e.type === 'error')).toHaveLength(0);
+    expect(secondEvents.filter(e => e.type === 'error' && (e as ErrorEvent).code !== 'rate_limit')).toHaveLength(0);
     const secondReady = secondEvents.find(e => e.type === 'ready') as ReadyEvent;
     expect(secondReady.sessionId).toBe(sessionId);
   });
@@ -104,7 +104,7 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
       prompt: 'respond with exactly the word hello',
       maxTimeout: 60,
     });
-    expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+    expect(events.filter(e => e.type === 'error' && (e as ErrorEvent).code !== 'rate_limit')).toHaveLength(0);
   });
 
   it.skipIf(!initialApiKey)('API key auth path', async () => {
@@ -117,7 +117,7 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
         prompt: 'respond with exactly the word hello',
         maxTimeout: 60,
       });
-      expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+      expect(events.filter(e => e.type === 'error' && (e as ErrorEvent).code !== 'rate_limit')).toHaveLength(0);
     } finally {
       if (savedOauthToken !== undefined) {
         process.env.CLAUDE_CODE_OAUTH_TOKEN = savedOauthToken;

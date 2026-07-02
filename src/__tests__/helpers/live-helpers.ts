@@ -1,6 +1,6 @@
 import { expect } from 'vitest';
 import { CliProcess } from '../../process/CliProcess.js';
-import type { ClaudeEvent, ReadyEvent, DoneEvent } from '../../events/types.js';
+import type { ClaudeEvent, ReadyEvent, DoneEvent, ErrorEvent } from '../../events/types.js';
 import type { CliBackend, ProcessOptions } from '../../process/types.js';
 
 export async function collectLive(
@@ -19,7 +19,11 @@ export function assertEventStreamStructure(events: ClaudeEvent[]): void {
   expect(events.some(e => e.type === 'ready')).toBe(true);
   expect(events.some(e => e.type === 'text')).toBe(true);
   expect(events.some(e => e.type === 'done')).toBe(true);
-  expect(events.filter(e => e.type === 'error')).toHaveLength(0);
+  // rate_limit is non-fatal if the run completed — the CLI retried internally
+  const fatalErrors = events.filter(
+    e => e.type === 'error' && (e as ErrorEvent).code !== 'rate_limit',
+  );
+  expect(fatalErrors).toHaveLength(0);
   for (let i = 1; i < events.length; i++) {
     expect(events[i].seq).toBeGreaterThan(events[i - 1].seq);
   }
