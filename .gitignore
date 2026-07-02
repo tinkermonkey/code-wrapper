@@ -1,2 +1,6 @@
 node_modules/
 dist/
+.orchestrator
+.env
+*.log
+.mcp.json

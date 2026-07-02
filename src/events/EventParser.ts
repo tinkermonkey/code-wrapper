@@ -225,9 +225,11 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  *   permission/request                      → RawEvent
  *   ACP error response (msg.error)          → ErrorEvent { code: 'cli_error' }
  *   Other responses/notifications           → RawEvent (zero-loss)
+ *   Unrecognized structure                  → RawEvent { rawType: 'acp/unknown' }
  */
-export function createCopilotAcpParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
-  let sessionUuid = '';
+export function createCopilotAcpParser(resumeSessionId?: string): (line: string, nextSeq: number) => ClaudeEvent[] {
+  let sessionUuid = resumeSessionId ?? '';
+  let readyEmitted = false;
 
   return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
     if (!line.trim()) return [];
@@ -238,7 +240,10 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
     try {
       msg = JSON.parse(line);
     } catch {
-      return [{ seq, timestamp, type: 'text', text: line + '\n' } satisfies TextEvent];
+      return [{
+        seq, timestamp, type: 'error', code: 'parse_error',
+        detail: `Malformed JSON: ${line.slice(0, 200)}`,
+      } satisfies ErrorEvent];
     }
 
     const events: ClaudeEvent[] = [];
@@ -249,6 +254,7 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
     // responses, and prevents overwriting the captured UUID on a resumed session.
     if (msg.result?.sessionId && !sessionUuid) {
       sessionUuid = msg.result.sessionId as string;
+      readyEmitted = true;
       events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
       return events;
     }
@@ -299,6 +305,13 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
 
     // Other responses (initialize ack, session/prompt ack, etc.)
     if (msg.id !== undefined) {
+      // For resumed sessions, emit ReadyEvent on the first successful response ack
+      // since session/new (which normally triggers it) is skipped.
+      if (resumeSessionId && !readyEmitted && msg.result !== undefined) {
+        readyEmitted = true;
+        events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
+        return events;
+      }
       events.push({
         seq: seq++, timestamp, type: 'raw',
         rawType: 'acp/response', data: msg as unknown,
@@ -306,6 +319,11 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
       return events;
     }
 
+    // Unrecognized structure — emit as raw so no message is ever silently lost
+    events.push({
+      seq: seq++, timestamp, type: 'raw',
+      rawType: 'acp/unknown', data: msg as unknown,
+    } satisfies RawEvent);
     return events;
   };
 }

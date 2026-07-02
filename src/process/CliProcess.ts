@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { ClaudeEvent, ErrorEvent, ProgressEvent } from '../events/types.js';
+import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent } from '../events/types.js';
 import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
@@ -86,6 +86,8 @@ export class CliProcess {
 
     this.activeProc = proc;
 
+    const isResume = this.backend === 'copilot' && !!options.sessionId && options.isFirstMessage === false;
+
     if (this.backend === 'copilot') {
       // ACP handshake: write NDJSON JSON-RPC messages to stdin then close.
       // The server responds to each over stdout; the readline handler below
@@ -93,9 +95,12 @@ export class CliProcess {
       const acpWrite = (msg: object): void => {
         proc.stdin!.write(JSON.stringify(msg) + '\n');
       };
+      const sessionPromptId = isResume ? 2 : 3;
       acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-01', capabilities: {} } });
-      acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
-      acpWrite({ jsonrpc: '2.0', id: 3, method: 'session/prompt', params: { prompt } });
+      if (!isResume) {
+        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
+      }
+      acpWrite({ jsonrpc: '2.0', id: sessionPromptId, method: 'session/prompt', params: { prompt } });
     } else {
       proc.stdin!.write(prompt);
     }
@@ -150,7 +155,7 @@ export class CliProcess {
 
     // Copilot: stateful ACP parser tracks sessionUuid across lines.
     // Claude: stateless parseCliLine.
-    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
+    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser(isResume ? options.sessionId : undefined) : parseCliLine;
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
@@ -200,7 +205,7 @@ export class CliProcess {
       }
     }, _watchdogIntervalMs);
 
-    const mk = (e: Omit<ClaudeEvent, 'seq' | 'timestamp'>): ClaudeEvent =>
+    const mk = (e: DistributiveOmit<ClaudeEvent, 'seq' | 'timestamp'>): ClaudeEvent =>
       ({ ...e, seq: seq++, timestamp: Date.now() } as ClaudeEvent);
 
     try {
@@ -274,7 +279,7 @@ export class CliProcess {
     } catch (err) {
       yield mk({
         type: 'error',
-        code: 'spawn_error',
+        code: 'internal_error',
         detail: err instanceof Error ? err.message : String(err),
       });
     } finally {
