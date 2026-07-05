@@ -26,7 +26,7 @@ for await (const line of rl) {
   try { msg = JSON.parse(line); } catch { continue; }
 
   if (msg.method === 'initialize') {
-    emit({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2025-01', capabilities: {} } });
+    emit({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, capabilities: {} } });
   } else if (msg.method === 'session/new') {
     if (scenario === 'resume') {
       process.stderr.write('resume scenario: unexpected session/new received\n');

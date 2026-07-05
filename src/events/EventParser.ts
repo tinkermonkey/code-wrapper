@@ -266,7 +266,14 @@ export function createCopilotAcpParser(resumeSessionId?: string): (line: string,
     // Notifications (no id field — server-push)
     if (msg.method != null && msg.id == null) {
       if (msg.method === 'session/update') {
-        // type: 'assistant.message_delta' carries streaming content
+        // Real copilot v1.x: agent_message_chunk with update.content.text
+        const update = msg.params?.update;
+        if (update?.sessionUpdate === 'agent_message_chunk') {
+          const text = (update?.content?.text ?? '') as string;
+          if (text) events.push({ seq: seq++, timestamp, type: 'text', text } satisfies TextEvent);
+          return events;
+        }
+        // Fake/legacy: params.type === 'assistant.message_delta' with params.data.deltaContent
         const content = (msg.params?.data?.deltaContent ?? '') as string;
         if (content) events.push({ seq: seq++, timestamp, type: 'text', text: content } satisfies TextEvent);
         return events;
@@ -316,8 +323,19 @@ export function createCopilotAcpParser(resumeSessionId?: string): (line: string,
       if (!initializeAcked) {
         initializeAcked = true;
       } else if (resumeSessionId && !readyEmitted && msg.result !== undefined) {
+        // For resumed sessions: the session/prompt ack (second response) signals
+        // the session is re-established. In real copilot v1.x, text arrives
+        // before this ack, so stopReason here also means the response is done.
         readyEmitted = true;
         events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
+        if ((msg.result as Record<string, unknown>)?.stopReason !== undefined) {
+          events.push({ seq: seq++, timestamp, type: 'done', sessionId: sessionUuid } satisfies DoneEvent);
+        }
+        return events;
+      } else if ((msg.result as Record<string, unknown>)?.stopReason !== undefined) {
+        // Real copilot v1.x: session/prompt ack with stopReason is the done signal.
+        // The fake/legacy protocol uses session.idle instead (handled above).
+        events.push({ seq: seq++, timestamp, type: 'done', sessionId: sessionUuid } satisfies DoneEvent);
         return events;
       }
       events.push({

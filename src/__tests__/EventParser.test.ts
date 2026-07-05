@@ -306,7 +306,7 @@ describe('parseCliLine', () => {
 });
 
 describe('createCopilotAcpParser resume mode', () => {
-  const initAck = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-01', capabilities: {} } });
+  const initAck = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: 1, capabilities: {} } });
   const sessionPromptAck = JSON.stringify({ jsonrpc: '2.0', id: 2, result: {} });
 
   it('initialize ack (first response) does NOT emit ReadyEvent', () => {

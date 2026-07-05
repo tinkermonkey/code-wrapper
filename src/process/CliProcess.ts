@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent } from '../events/types.js';
+import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent, ReadyEvent } from '../events/types.js';
 import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
@@ -88,23 +88,34 @@ export class CliProcess {
 
     const isResume = this.backend === 'copilot' && !!options.sessionId && options.isFirstMessage === false;
 
+    const acpWrite = (msg: object): void => {
+      proc.stdin!.write(JSON.stringify(msg) + '\n');
+    };
+
     if (this.backend === 'copilot') {
-      // ACP handshake: write NDJSON JSON-RPC messages to stdin then close.
-      // The server responds to each over stdout; the readline handler below
-      // parses them via createCopilotAcpParser().
-      const acpWrite = (msg: object): void => {
-        proc.stdin!.write(JSON.stringify(msg) + '\n');
-      };
-      const sessionPromptId = isResume ? 2 : 3;
-      acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-01', capabilities: {} } });
-      if (!isResume) {
-        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd } });
+      // ACP handshake over stdin/stdout. Copilot v1.0.68+ requires:
+      //   - protocolVersion as integer (not string)
+      //   - session/prompt.sessionId from the session/new ack
+      //   - session/prompt.prompt as [{type:'text',text:...}] array
+      // For new sessions: send initialize+session/new now; send session/prompt
+      // reactively from the consume loop once the ReadyEvent (which carries the
+      // sessionId from the session/new ack) is parsed from stdout.
+      // For resume sessions: sessionId is already known; send both upfront.
+      acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, capabilities: {} } });
+      if (isResume) {
+        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: {
+          sessionId: options.sessionId,
+          prompt: [{ type: 'text', text: prompt }],
+        } });
+        proc.stdin!.end();
+      } else {
+        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
+        // stdin stays open — session/prompt is sent from the consume loop below
       }
-      acpWrite({ jsonrpc: '2.0', id: sessionPromptId, method: 'session/prompt', params: { prompt } });
     } else {
       proc.stdin!.write(prompt);
+      proc.stdin!.end();
     }
-    proc.stdin!.end();
 
     let seq = 0;
     let stderrBuf = '';
@@ -208,12 +219,25 @@ export class CliProcess {
     const mk = (e: DistributiveOmit<ClaudeEvent, 'seq' | 'timestamp'>): ClaudeEvent =>
       ({ ...e, seq: seq++, timestamp: Date.now() } as ClaudeEvent);
 
+    // For new Copilot sessions: session/prompt is sent reactively once the
+    // ReadyEvent (sessionId from session/new ack) arrives. For resume and
+    // Claude, session/prompt was already sent before the consume loop.
+    let acpSessionPromptSent = this.backend !== 'copilot' || isResume;
+
     try {
       // Consume from the shared queue until readline closes (null sentinel)
       while (true) {
         if (queue.length === 0) await waitForEvent();
         const item = queue.shift()!;
         if (item === null) break;
+        if (!acpSessionPromptSent && item.type === 'ready') {
+          acpSessionPromptSent = true;
+          acpWrite({ jsonrpc: '2.0', id: 3, method: 'session/prompt', params: {
+            sessionId: (item as ReadyEvent).sessionId,
+            prompt: [{ type: 'text', text: prompt }],
+          } });
+          proc.stdin!.end();
+        }
         yield item;
       }
 
@@ -286,6 +310,10 @@ export class CliProcess {
       clearInterval(watchdog);
       if (sigkillTimer !== null) clearTimeout(sigkillTimer);
       if (signal) signal.removeEventListener('abort', abortHandler);
+      // Close stdin if session/prompt was never sent (process errored before ReadyEvent)
+      if (!acpSessionPromptSent) {
+        try { proc.stdin!.end(); } catch { /* ignore EPIPE */ }
+      }
       this.activeProc = null;
     }
   }
