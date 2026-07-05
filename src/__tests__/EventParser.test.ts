@@ -305,6 +305,44 @@ describe('parseCliLine', () => {
   });
 });
 
+describe('createCopilotAcpParser resume mode', () => {
+  const initAck = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-01', capabilities: {} } });
+  const sessionPromptAck = JSON.stringify({ jsonrpc: '2.0', id: 2, result: {} });
+
+  it('initialize ack (first response) does NOT emit ReadyEvent', () => {
+    const parse = createCopilotAcpParser('existing-uuid');
+    const events = parse(initAck, 0);
+    expect(events.every(e => e.type !== 'ready')).toBe(true);
+  });
+
+  it('session/prompt ack (second response) emits ReadyEvent with resumed sessionId', () => {
+    const parse = createCopilotAcpParser('existing-uuid');
+    parse(initAck, 0);
+    const events = parse(sessionPromptAck, 1) as [ReadyEvent];
+    const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
+    expect(ready).toBeDefined();
+    expect(ready!.sessionId).toBe('existing-uuid');
+  });
+
+  it('ReadyEvent is not emitted twice in resume mode', () => {
+    const parse = createCopilotAcpParser('existing-uuid');
+    parse(initAck, 0);
+    const first = parse(sessionPromptAck, 1);
+    const second = parse(sessionPromptAck, 10);
+    expect(first.filter(e => e.type === 'ready')).toHaveLength(1);
+    expect(second.filter(e => e.type === 'ready')).toHaveLength(0);
+  });
+
+  it('non-resume: session/new ack with result.sessionId emits ReadyEvent', () => {
+    const parse = createCopilotAcpParser();
+    const sessionNewAck = JSON.stringify({ jsonrpc: '2.0', id: 2, result: { sessionId: 'new-session-abc' } });
+    const events = parse(sessionNewAck, 0);
+    const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
+    expect(ready).toBeDefined();
+    expect(ready!.sessionId).toBe('new-session-abc');
+  });
+});
+
 describe('createCopilotAcpParser', () => {
   it('empty line returns []', () => {
     const parse = createCopilotAcpParser();

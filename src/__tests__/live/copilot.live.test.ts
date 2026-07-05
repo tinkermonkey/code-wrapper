@@ -1,4 +1,4 @@
-import { beforeAll, describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { tmpdir } from 'node:os';
 import { CliProcess } from '../../process/CliProcess.js';
 import type { ReadyEvent, ErrorEvent, TextEvent, ClaudeEvent, ErrorCode } from '../../events/types.js';
@@ -19,40 +19,39 @@ let isAuthenticated = false;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-describe.skipIf(!isAvailable)('copilot live tests', () => {
-  beforeAll(async () => {
-    const authCheckEvents = await collectLive('copilot', {
-      cwd,
-      prompt: 'hi',
-      maxTimeout: 60,
-    });
-    const allErrors = authCheckEvents.filter((e): e is ErrorEvent => e.type === 'error');
-    const authErrors = allErrors.filter(e => AUTH_ERROR_CODES.has(e.code));
-    const nonAuthErrors = allErrors.filter(e => !AUTH_ERROR_CODES.has(e.code));
-    const timedOut = allErrors.some(e => e.code === 'idle_timeout');
-
-    if (timedOut) {
-      console.warn(
-        '[copilot.live] auth probe timed out — could be a Copilot cold start, not necessarily an auth failure',
-      );
-    }
-    if (nonAuthErrors.length > 0) {
-      console.warn(
-        '[copilot.live] non-auth errors during auth probe (suite will still run):',
-        nonAuthErrors.map(e => `${e.code}: ${e.detail}`).join('; '),
-      );
-    }
-    if (authErrors.length > 0) {
-      console.warn(
-        '[copilot.live] auth check failed — skipping suite:',
-        authErrors.map(e => `${e.code}: ${e.detail}`).join('; '),
-      );
-    }
-    isAuthenticated = authErrors.length === 0;
+if (isAvailable) {
+  const authCheckEvents = await collectLive('copilot', {
+    cwd,
+    prompt: 'hi',
+    maxTimeout: 60,
   });
+  const allErrors = authCheckEvents.filter((e): e is ErrorEvent => e.type === 'error');
+  const authErrors = allErrors.filter(e => AUTH_ERROR_CODES.has(e.code));
+  const nonAuthErrors = allErrors.filter(e => !AUTH_ERROR_CODES.has(e.code));
+  const timedOut = allErrors.some(e => e.code === 'idle_timeout');
 
+  if (timedOut) {
+    console.warn(
+      '[copilot.live] auth probe timed out — could be a Copilot cold start, not necessarily an auth failure',
+    );
+  }
+  if (nonAuthErrors.length > 0) {
+    console.warn(
+      '[copilot.live] non-auth errors during auth probe (suite will still run):',
+      nonAuthErrors.map(e => `${e.code}: ${e.detail}`).join('; '),
+    );
+  }
+  if (authErrors.length > 0) {
+    console.warn(
+      '[copilot.live] auth check failed — skipping suite:',
+      authErrors.map(e => `${e.code}: ${e.detail}`).join('; '),
+    );
+  }
+  isAuthenticated = authErrors.length === 0;
+}
+
+describe.skipIf(!isAvailable || !isAuthenticated)('copilot live tests', () => {
   it('golden path', async () => {
-    if (!isAuthenticated) return;
     const events = await collectLive('copilot', {
       cwd,
       prompt: 'respond with exactly the word hello',
@@ -62,7 +61,6 @@ describe.skipIf(!isAvailable)('copilot live tests', () => {
   });
 
   it('ReadyEvent session UUID', async () => {
-    if (!isAuthenticated) return;
     const events = await collectLive('copilot', {
       cwd,
       prompt: 'respond with exactly the word hello',
@@ -74,7 +72,6 @@ describe.skipIf(!isAvailable)('copilot live tests', () => {
   });
 
   it('text content emitted', async () => {
-    if (!isAuthenticated) return;
     const events = await collectLive('copilot', {
       cwd,
       prompt: 'respond with exactly the word hello',
@@ -86,7 +83,6 @@ describe.skipIf(!isAvailable)('copilot live tests', () => {
   });
 
   it('session resume', async () => {
-    if (!isAuthenticated) return;
     const firstEvents = await collectLive('copilot', {
       cwd,
       prompt: 'respond with exactly the word hello',
@@ -108,8 +104,7 @@ describe.skipIf(!isAvailable)('copilot live tests', () => {
     expect(secondReady.sessionId).toBe(sessionId);
   });
 
-  it('AbortSignal mid-run', async () => {
-    if (!isAuthenticated) return;
+  it('AbortSignal abort before first text', async () => {
     const controller = new AbortController();
     const proc = new CliProcess('copilot');
     const events: ClaudeEvent[] = [];

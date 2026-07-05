@@ -230,6 +230,10 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
 export function createCopilotAcpParser(resumeSessionId?: string): (line: string, nextSeq: number) => ClaudeEvent[] {
   let sessionUuid = resumeSessionId ?? '';
   let readyEmitted = false;
+  // Tracks whether the initialize handshake ack has been seen. In resume mode
+  // the first response with msg.result is always the initialize ack, NOT the
+  // session/prompt ack that signals the session is re-established.
+  let initializeAcked = false;
 
   return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
     if (!line.trim()) return [];
@@ -305,9 +309,13 @@ export function createCopilotAcpParser(resumeSessionId?: string): (line: string,
 
     // Other responses (initialize ack, session/prompt ack, etc.)
     if (msg.id !== undefined) {
-      // For resumed sessions, emit ReadyEvent on the first successful response ack
-      // since session/new (which normally triggers it) is skipped.
-      if (resumeSessionId && !readyEmitted && msg.result !== undefined) {
+      // For resumed sessions, emit ReadyEvent on the session/prompt ack (the second
+      // response), not on the initialize ack (the first). The initialize ack always
+      // arrives first and only confirms the ACP handshake — the session is not
+      // actually re-established until session/prompt is acknowledged.
+      if (!initializeAcked) {
+        initializeAcked = true;
+      } else if (resumeSessionId && !readyEmitted && msg.result !== undefined) {
         readyEmitted = true;
         events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
         return events;

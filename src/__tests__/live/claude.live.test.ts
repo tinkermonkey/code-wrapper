@@ -78,7 +78,7 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude live tests', () => 
     expect(secondReady.sessionId).toBe(sessionId);
   });
 
-  it('AbortSignal mid-run', async () => {
+  it('AbortSignal abort before first text', async () => {
     const controller = new AbortController();
     const proc = new CliProcess('claude');
     const events: ClaudeEvent[] = [];

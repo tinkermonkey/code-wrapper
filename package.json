@@ -22,7 +22,11 @@
       "import": "./dist/sessions/index.js"
     }
   },
-  "files": ["dist", "src", "ARCHITECTURE.md"],
+  "files": [
+    "dist",
+    "src",
+    "ARCHITECTURE.md"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
@@ -31,7 +35,14 @@
     "test:live": "vitest run --config vitest.config.live.ts",
     "prepare": "npm run build"
   },
-  "keywords": ["claude-code", "github-copilot", "ai", "cli", "wrapper", "sessions"],
+  "keywords": [
+    "claude-code",
+    "github-copilot",
+    "ai",
+    "cli",
+    "wrapper",
+    "sessions"
+  ],
   "author": "tinkermonkey",
   "license": "MIT",
   "engines": {
@@ -39,7 +50,11 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "dotenv": "^17.4.2",
     "typescript": "^5.5.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@github/copilot": "^1.0.68"
   }
 }
