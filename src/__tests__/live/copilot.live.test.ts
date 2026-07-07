@@ -101,7 +101,11 @@ describe.skipIf(!isAvailable || !isAuthenticated)('copilot live tests', () => {
     });
     expect(secondEvents.filter(e => e.type === 'error')).toHaveLength(0);
     const secondReady = secondEvents.find(e => e.type === 'ready') as ReadyEvent;
-    expect(secondReady.sessionId).toBe(sessionId);
+    // Real Copilot resume loads the persisted session (via --resume=<uuid>)
+    // but session/new always hands back a NEW session UUID — it is never the
+    // same as the one being resumed.
+    expect(secondReady.sessionId).toMatch(UUID_RE);
+    expect(secondReady.sessionId).not.toBe(sessionId);
   });
 
   it('AbortSignal abort before first text', async () => {

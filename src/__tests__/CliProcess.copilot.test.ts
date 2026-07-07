@@ -181,14 +181,16 @@ describe('AbortSignal', () => {
 
 // ---------------------------------------------------------------- resume handshake
 describe('resume handshake', () => {
-  it('skips session/new and uses id=2 for session/prompt when isFirstMessage is false', async () => {
+  it('sends session/new (with --resume=<uuid> arg) and uses id=3 for session/prompt, yielding a NEW sessionId', async () => {
     process.env.FAKE_SCENARIO = 'resume';
     const events = await collect({ sessionId: 'test-sess-uuid', isFirstMessage: false });
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
-    expect(events.some(e => e.type === 'ready')).toBe(true);
-    expect((events.find(e => e.type === 'ready') as ReadyEvent).sessionId).toBe('test-sess-uuid');
-    expect(events.some(e => e.type === 'done')).toBe(true);
-    expect((events.find(e => e.type === 'done') as DoneEvent).sessionId).toBe('test-sess-uuid');
+    const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
+    expect(ready).toBeDefined();
+    expect(ready!.sessionId).not.toBe('test-sess-uuid');
+    const done = events.find(e => e.type === 'done') as DoneEvent | undefined;
+    expect(done).toBeDefined();
+    expect(done!.sessionId).toBe(ready!.sessionId);
   });
 
   it('sends session/new (produces ReadyEvent) when isFirstMessage is true (default)', async () => {

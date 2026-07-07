@@ -17,6 +17,9 @@ const STALE_SESSION_RE = /no conversation found with session id/i;
  * Copilot: ACP protocol (copilot --acp --stdio); NDJSON JSON-RPC over
  *   stdin/stdout; initialize → session/new → session/prompt handshake;
  *   stateful parser produced by createCopilotAcpParser() tracks sessionUuid.
+ *   Resume uses the same handshake (plus a --resume=<uuid> CLI flag) — the
+ *   persisted session is loaded by session/new, which hands back a NEW
+ *   session UUID rather than reusing the old one.
  *
  * The caller is responsible for routing events — this class has no opinion
  * on whether they go to a WebSocket, Redis, SSE response, or an in-process
@@ -86,7 +89,15 @@ export class CliProcess {
 
     this.activeProc = proc;
 
-    const isResume = this.backend === 'copilot' && !!options.sessionId && options.isFirstMessage === false;
+    // stdin is kept open until a DoneEvent is observed or the process exits —
+    // closing it right after session/prompt cuts the CLI off before it can
+    // emit session/update text chunks. See closeStdin() call sites below.
+    let stdinClosed = false;
+    const closeStdin = (): void => {
+      if (stdinClosed) return;
+      stdinClosed = true;
+      try { proc.stdin!.end(); } catch { /* ignore EPIPE */ }
+    };
 
     const acpWrite = (msg: object): void => {
       proc.stdin!.write(JSON.stringify(msg) + '\n');
@@ -97,24 +108,20 @@ export class CliProcess {
       //   - protocolVersion as integer (not string)
       //   - session/prompt.sessionId from the session/new ack
       //   - session/prompt.prompt as [{type:'text',text:...}] array
-      // For new sessions: send initialize+session/new now; send session/prompt
-      // reactively from the consume loop once the ReadyEvent (which carries the
-      // sessionId from the session/new ack) is parsed from stdout.
-      // For resume sessions: sessionId is already known; send both upfront.
+      // Real Copilot persists ACP sessions to disk under a UUID. Resuming does
+      // NOT mean reusing that UUID directly in session/prompt — the CLI is
+      // launched with --resume=<uuid> (see buildCopilotArgs), and a fresh
+      // session/new call loads the persisted context and hands back a NEW
+      // session UUID. So new and resumed sessions send the identical
+      // initialize + session/new sequence here; session/prompt is sent
+      // reactively from the consume loop below once the ReadyEvent (sessionId
+      // from the session/new ack) is parsed from stdout.
       acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, capabilities: {} } });
-      if (isResume) {
-        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: {
-          sessionId: options.sessionId,
-          prompt: [{ type: 'text', text: prompt }],
-        } });
-        proc.stdin!.end();
-      } else {
-        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
-        // stdin stays open — session/prompt is sent from the consume loop below
-      }
+      acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
+      // stdin stays open — session/prompt is sent from the consume loop below
     } else {
       proc.stdin!.write(prompt);
-      proc.stdin!.end();
+      closeStdin();
     }
 
     let seq = 0;
@@ -128,6 +135,14 @@ export class CliProcess {
     const exitPromise = new Promise<void>(resolve => {
       proc.on('close', code => { exitCode = code; resolve(); });
     });
+
+    // The child has terminated (though its stdio streams may not have fully
+    // closed yet) — close stdin now if a DoneEvent never arrived. Node's
+    // 'close' event above waits for all stdio streams to close, and our own
+    // writable stdin stream cannot close until .end() is called on it — so
+    // this must run on 'exit', not after awaiting exitPromise, or a process
+    // that exits without ever emitting a DoneEvent would deadlock forever.
+    proc.on('exit', () => closeStdin());
 
     proc.stderr!.on('data', (chunk: Buffer) => {
       stderrBuf += chunk.toString();
@@ -166,7 +181,7 @@ export class CliProcess {
 
     // Copilot: stateful ACP parser tracks sessionUuid across lines.
     // Claude: stateless parseCliLine.
-    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser(isResume ? options.sessionId : undefined) : parseCliLine;
+    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
@@ -219,10 +234,10 @@ export class CliProcess {
     const mk = (e: DistributiveOmit<ClaudeEvent, 'seq' | 'timestamp'>): ClaudeEvent =>
       ({ ...e, seq: seq++, timestamp: Date.now() } as ClaudeEvent);
 
-    // For new Copilot sessions: session/prompt is sent reactively once the
-    // ReadyEvent (sessionId from session/new ack) arrives. For resume and
-    // Claude, session/prompt was already sent before the consume loop.
-    let acpSessionPromptSent = this.backend !== 'copilot' || isResume;
+    // For Copilot (new or resumed): session/prompt is sent reactively once the
+    // ReadyEvent (sessionId from the session/new ack) arrives. For Claude,
+    // the prompt was already written and stdin closed before the consume loop.
+    let acpSessionPromptSent = this.backend !== 'copilot';
 
     try {
       // Consume from the shared queue until readline closes (null sentinel)
@@ -236,7 +251,11 @@ export class CliProcess {
             sessionId: (item as ReadyEvent).sessionId,
             prompt: [{ type: 'text', text: prompt }],
           } });
-          proc.stdin!.end();
+          // stdin stays open — closed only once a DoneEvent is observed (or
+          // the process exits), so streamed text chunks aren't cut off.
+        }
+        if (item.type === 'done') {
+          closeStdin();
         }
         yield item;
       }
@@ -310,10 +329,9 @@ export class CliProcess {
       clearInterval(watchdog);
       if (sigkillTimer !== null) clearTimeout(sigkillTimer);
       if (signal) signal.removeEventListener('abort', abortHandler);
-      // Close stdin if session/prompt was never sent (process errored before ReadyEvent)
-      if (!acpSessionPromptSent) {
-        try { proc.stdin!.end(); } catch { /* ignore EPIPE */ }
-      }
+      // Safety net: close stdin if a DoneEvent was never observed (process
+      // errored, was aborted, timed out, or exited without emitting one).
+      closeStdin();
       this.activeProc = null;
     }
   }
@@ -365,7 +383,9 @@ export class CliProcess {
    * NDJSON message over stdin in run() after the initialize/session/new handshake.
    *
    * Session resume: --resume=<uuid> (the UUID comes from the ReadyEvent.sessionId
-   * produced by the session/new response on the first message).
+   * produced by the session/new response on the first message). The CLI loads
+   * the persisted session state itself; the ACP session/new call that follows
+   * still returns a NEW session UUID, distinct from the one passed here.
    */
   private buildCopilotArgs(options: ProcessOptions): string[] {
     const { sessionId, isFirstMessage = true, skipPermissions = false, agent } = options;

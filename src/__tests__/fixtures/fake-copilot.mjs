@@ -5,7 +5,9 @@
  *
  * Scenarios (FAKE_SCENARIO env var):
  *   golden-path        full handshake + two message_delta chunks + session.idle
- *   resume             resume handshake (no session/new); validates --resume=<uuid> arg and id=2 on session/prompt
+ *   resume             same initialize+session/new+session/prompt handshake as golden path;
+ *                       validates --resume=<uuid> arg was passed and returns a NEW sessionId
+ *                       (distinct from the resumed uuid), with id=3 on session/prompt
  *   stall              full handshake + one message_delta, then stalls; exits on SIGTERM
  *   ignore-sigterm     full handshake + one message_delta, then stalls; ignores SIGTERM
  *   nonzero-exit       full handshake, then exits with code 1
@@ -14,6 +16,7 @@
 import { createInterface } from 'node:readline';
 
 const SESSION_ID = 'copilot-sess-abc123';
+const RESUMED_SESSION_ID = 'copilot-resumed-sess-xyz789';
 const scenario = process.env.FAKE_SCENARIO ?? 'golden-path';
 const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\n');
 
@@ -28,12 +31,8 @@ for await (const line of rl) {
   if (msg.method === 'initialize') {
     emit({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, capabilities: {} } });
   } else if (msg.method === 'session/new') {
-    if (scenario === 'resume') {
-      process.stderr.write('resume scenario: unexpected session/new received\n');
-      process.exitCode = 1;
-      process.exit(1);
-    }
-    emit({ jsonrpc: '2.0', id: msg.id, result: { sessionId: SESSION_ID } });
+    const sessionId = scenario === 'resume' ? RESUMED_SESSION_ID : SESSION_ID;
+    emit({ jsonrpc: '2.0', id: msg.id, result: { sessionId } });
   } else if (msg.method === 'session/prompt') {
     if (scenario === 'resume') {
       const resumeArg = process.argv.find(a => a.startsWith('--resume='));
@@ -42,8 +41,8 @@ for await (const line of rl) {
         process.exitCode = 1;
         process.exit(1);
       }
-      if (msg.id !== 2) {
-        process.stderr.write(`resume scenario: expected session/prompt id=2, got id=${msg.id}\n`);
+      if (msg.id !== 3) {
+        process.stderr.write(`resume scenario: expected session/prompt id=3 (after initialize+session/new), got id=${msg.id}\n`);
         process.exitCode = 1;
         process.exit(1);
       }
@@ -90,7 +89,14 @@ if (promptReceived && scenario !== 'stall' && scenario !== 'ignore-sigterm') {
       break;
     }
     case 'nonzero-exit': {
-      process.exitCode = 1;
+      // No DoneEvent is ever emitted on this path. The parent now keeps its
+      // write end of stdin open until it sees a DoneEvent or this process
+      // exits — and Node keeps process.stdin (read side) referenced once
+      // readline has consumed it, so this process wouldn't exit on its own
+      // without the parent's EOF, and the parent wouldn't send EOF without
+      // this process exiting first. Break that cycle by terminating
+      // unconditionally instead of falling off the end of the script.
+      process.exit(1);
       break;
     }
     default: {

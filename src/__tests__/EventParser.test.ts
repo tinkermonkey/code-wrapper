@@ -305,41 +305,45 @@ describe('parseCliLine', () => {
   });
 });
 
-describe('createCopilotAcpParser resume mode', () => {
+describe('createCopilotAcpParser session/new handshake', () => {
   const initAck = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: 1, capabilities: {} } });
-  const sessionPromptAck = JSON.stringify({ jsonrpc: '2.0', id: 2, result: {} });
+  const sessionNewAck = JSON.stringify({ jsonrpc: '2.0', id: 2, result: { sessionId: 'new-session-abc' } });
 
   it('initialize ack (first response) does NOT emit ReadyEvent', () => {
-    const parse = createCopilotAcpParser('existing-uuid');
+    const parse = createCopilotAcpParser();
     const events = parse(initAck, 0);
     expect(events.every(e => e.type !== 'ready')).toBe(true);
   });
 
-  it('session/prompt ack (second response) emits ReadyEvent with resumed sessionId', () => {
-    const parse = createCopilotAcpParser('existing-uuid');
+  it('session/new ack (result.sessionId) emits ReadyEvent — same for new and resumed sessions', () => {
+    const parse = createCopilotAcpParser();
     parse(initAck, 0);
-    const events = parse(sessionPromptAck, 1) as [ReadyEvent];
+    const events = parse(sessionNewAck, 1) as [ReadyEvent];
     const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
     expect(ready).toBeDefined();
-    expect(ready!.sessionId).toBe('existing-uuid');
+    expect(ready!.sessionId).toBe('new-session-abc');
   });
 
-  it('ReadyEvent is not emitted twice in resume mode', () => {
-    const parse = createCopilotAcpParser('existing-uuid');
+  it('ReadyEvent is not emitted twice', () => {
+    const parse = createCopilotAcpParser();
     parse(initAck, 0);
-    const first = parse(sessionPromptAck, 1);
-    const second = parse(sessionPromptAck, 10);
+    const first = parse(sessionNewAck, 1);
+    const second = parse(sessionNewAck, 10);
     expect(first.filter(e => e.type === 'ready')).toHaveLength(1);
     expect(second.filter(e => e.type === 'ready')).toHaveLength(0);
   });
 
-  it('non-resume: session/new ack with result.sessionId emits ReadyEvent', () => {
+  it('session/prompt ack with stopReason (after session/new) emits DoneEvent for the session/new uuid', () => {
     const parse = createCopilotAcpParser();
-    const sessionNewAck = JSON.stringify({ jsonrpc: '2.0', id: 2, result: { sessionId: 'new-session-abc' } });
-    const events = parse(sessionNewAck, 0);
-    const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
-    expect(ready).toBeDefined();
-    expect(ready!.sessionId).toBe('new-session-abc');
+    parse(initAck, 0);
+    parse(sessionNewAck, 1);
+    const events = parse(
+      JSON.stringify({ jsonrpc: '2.0', id: 3, result: { stopReason: 'end_turn' } }),
+      2,
+    ) as [DoneEvent];
+    const done = events.find(e => e.type === 'done') as DoneEvent | undefined;
+    expect(done).toBeDefined();
+    expect(done!.sessionId).toBe('new-session-abc');
   });
 });
 

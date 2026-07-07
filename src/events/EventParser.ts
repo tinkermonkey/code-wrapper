@@ -216,6 +216,12 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  * into normalized ClaudeEvents. Call once per CliProcess.run() invocation so
  * all lines in a session share the same sessionUuid state.
  *
+ * Resumed sessions use the exact same handshake as new ones (initialize →
+ * session/new → session/prompt): the CLI is launched with --resume=<uuid> to
+ * load the persisted context, but session/new still hands back a NEW session
+ * UUID rather than the resumed one, so there is nothing resume-specific left
+ * for this parser to special-case.
+ *
  * ACP notification → ClaudeEvent mapping:
  *   session/new result (result.sessionId)  → ReadyEvent
  *   session/update (assistant.message_delta) → TextEvent
@@ -227,12 +233,11 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  *   Other responses/notifications           → RawEvent (zero-loss)
  *   Unrecognized structure                  → RawEvent { rawType: 'acp/unknown' }
  */
-export function createCopilotAcpParser(resumeSessionId?: string): (line: string, nextSeq: number) => ClaudeEvent[] {
-  let sessionUuid = resumeSessionId ?? '';
-  let readyEmitted = false;
-  // Tracks whether the initialize handshake ack has been seen. In resume mode
-  // the first response with msg.result is always the initialize ack, NOT the
-  // session/prompt ack that signals the session is re-established.
+export function createCopilotAcpParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
+  let sessionUuid = '';
+  // Tracks whether the initialize handshake ack has been seen, so the
+  // session/prompt ack's stopReason (the real-protocol done signal) isn't
+  // confused with the initialize ack that always arrives first.
   let initializeAcked = false;
 
   return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
@@ -258,7 +263,6 @@ export function createCopilotAcpParser(resumeSessionId?: string): (line: string,
     // responses, and prevents overwriting the captured UUID on a resumed session.
     if (msg.result?.sessionId && !sessionUuid) {
       sessionUuid = msg.result.sessionId as string;
-      readyEmitted = true;
       events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
       return events;
     }
@@ -316,22 +320,11 @@ export function createCopilotAcpParser(resumeSessionId?: string): (line: string,
 
     // Other responses (initialize ack, session/prompt ack, etc.)
     if (msg.id !== undefined) {
-      // For resumed sessions, emit ReadyEvent on the session/prompt ack (the second
-      // response), not on the initialize ack (the first). The initialize ack always
-      // arrives first and only confirms the ACP handshake — the session is not
-      // actually re-established until session/prompt is acknowledged.
+      // The initialize ack always arrives first and only confirms the ACP
+      // handshake; it never carries a sessionId, so it can't hit the
+      // session/new branch above.
       if (!initializeAcked) {
         initializeAcked = true;
-      } else if (resumeSessionId && !readyEmitted && msg.result !== undefined) {
-        // For resumed sessions: the session/prompt ack (second response) signals
-        // the session is re-established. In real copilot v1.x, text arrives
-        // before this ack, so stopReason here also means the response is done.
-        readyEmitted = true;
-        events.push({ seq: seq++, timestamp, type: 'ready', sessionId: sessionUuid } satisfies ReadyEvent);
-        if ((msg.result as Record<string, unknown>)?.stopReason !== undefined) {
-          events.push({ seq: seq++, timestamp, type: 'done', sessionId: sessionUuid } satisfies DoneEvent);
-        }
-        return events;
       } else if ((msg.result as Record<string, unknown>)?.stopReason !== undefined) {
         // Real copilot v1.x: session/prompt ack with stopReason is the done signal.
         // The fake/legacy protocol uses session.idle instead (handled above).
