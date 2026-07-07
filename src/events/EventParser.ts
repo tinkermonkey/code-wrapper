@@ -216,6 +216,12 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  * into normalized ClaudeEvents. Call once per CliProcess.run() invocation so
  * all lines in a session share the same sessionUuid state.
  *
+ * Resumed sessions use the exact same handshake as new ones (initialize →
+ * session/new → session/prompt): the CLI is launched with --resume=<uuid> to
+ * load the persisted context, but session/new still hands back a NEW session
+ * UUID rather than the resumed one, so there is nothing resume-specific left
+ * for this parser to special-case.
+ *
  * ACP notification → ClaudeEvent mapping:
  *   session/new result (result.sessionId)  → ReadyEvent
  *   session/update (assistant.message_delta) → TextEvent
@@ -225,9 +231,14 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  *   permission/request                      → RawEvent
  *   ACP error response (msg.error)          → ErrorEvent { code: 'cli_error' }
  *   Other responses/notifications           → RawEvent (zero-loss)
+ *   Unrecognized structure                  → RawEvent { rawType: 'acp/unknown' }
  */
 export function createCopilotAcpParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
   let sessionUuid = '';
+  // Tracks whether the initialize handshake ack has been seen, so the
+  // session/prompt ack's stopReason (the real-protocol done signal) isn't
+  // confused with the initialize ack that always arrives first.
+  let initializeAcked = false;
 
   return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
     if (!line.trim()) return [];
@@ -238,7 +249,10 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
     try {
       msg = JSON.parse(line);
     } catch {
-      return [{ seq, timestamp, type: 'text', text: line + '\n' } satisfies TextEvent];
+      return [{
+        seq, timestamp, type: 'error', code: 'parse_error',
+        detail: `Malformed JSON: ${line.slice(0, 200)}`,
+      } satisfies ErrorEvent];
     }
 
     const events: ClaudeEvent[] = [];
@@ -256,7 +270,14 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
     // Notifications (no id field — server-push)
     if (msg.method != null && msg.id == null) {
       if (msg.method === 'session/update') {
-        // type: 'assistant.message_delta' carries streaming content
+        // Real copilot v1.x: agent_message_chunk with update.content.text
+        const update = msg.params?.update;
+        if (update?.sessionUpdate === 'agent_message_chunk') {
+          const text = (update?.content?.text ?? '') as string;
+          if (text) events.push({ seq: seq++, timestamp, type: 'text', text } satisfies TextEvent);
+          return events;
+        }
+        // Fake/legacy: params.type === 'assistant.message_delta' with params.data.deltaContent
         const content = (msg.params?.data?.deltaContent ?? '') as string;
         if (content) events.push({ seq: seq++, timestamp, type: 'text', text: content } satisfies TextEvent);
         return events;
@@ -299,6 +320,17 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
 
     // Other responses (initialize ack, session/prompt ack, etc.)
     if (msg.id !== undefined) {
+      // The initialize ack always arrives first and only confirms the ACP
+      // handshake; it never carries a sessionId, so it can't hit the
+      // session/new branch above.
+      if (!initializeAcked) {
+        initializeAcked = true;
+      } else if ((msg.result as Record<string, unknown>)?.stopReason !== undefined) {
+        // Real copilot v1.x: session/prompt ack with stopReason is the done signal.
+        // The fake/legacy protocol uses session.idle instead (handled above).
+        events.push({ seq: seq++, timestamp, type: 'done', sessionId: sessionUuid } satisfies DoneEvent);
+        return events;
+      }
       events.push({
         seq: seq++, timestamp, type: 'raw',
         rawType: 'acp/response', data: msg as unknown,
@@ -306,6 +338,11 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
       return events;
     }
 
+    // Unrecognized structure — emit as raw so no message is ever silently lost
+    events.push({
+      seq: seq++, timestamp, type: 'raw',
+      rawType: 'acp/unknown', data: msg as unknown,
+    } satisfies RawEvent);
     return events;
   };
 }

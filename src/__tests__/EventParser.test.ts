@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCliLine } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
 import type {
   ReadyEvent,
   RetryEvent,
@@ -302,5 +302,86 @@ describe('parseCliLine', () => {
       7,
     );
     expect(evs.map(e => e.seq)).toEqual([7, 8, 9]);
+  });
+});
+
+describe('createCopilotAcpParser session/new handshake', () => {
+  const initAck = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: 1, capabilities: {} } });
+  const sessionNewAck = JSON.stringify({ jsonrpc: '2.0', id: 2, result: { sessionId: 'new-session-abc' } });
+
+  it('initialize ack (first response) does NOT emit ReadyEvent', () => {
+    const parse = createCopilotAcpParser();
+    const events = parse(initAck, 0);
+    expect(events.every(e => e.type !== 'ready')).toBe(true);
+  });
+
+  it('session/new ack (result.sessionId) emits ReadyEvent — same for new and resumed sessions', () => {
+    const parse = createCopilotAcpParser();
+    parse(initAck, 0);
+    const events = parse(sessionNewAck, 1) as [ReadyEvent];
+    const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
+    expect(ready).toBeDefined();
+    expect(ready!.sessionId).toBe('new-session-abc');
+  });
+
+  it('ReadyEvent is not emitted twice', () => {
+    const parse = createCopilotAcpParser();
+    parse(initAck, 0);
+    const first = parse(sessionNewAck, 1);
+    const second = parse(sessionNewAck, 10);
+    expect(first.filter(e => e.type === 'ready')).toHaveLength(1);
+    expect(second.filter(e => e.type === 'ready')).toHaveLength(0);
+  });
+
+  it('session/prompt ack with stopReason (after session/new) emits DoneEvent for the session/new uuid', () => {
+    const parse = createCopilotAcpParser();
+    parse(initAck, 0);
+    parse(sessionNewAck, 1);
+    const events = parse(
+      JSON.stringify({ jsonrpc: '2.0', id: 3, result: { stopReason: 'end_turn' } }),
+      2,
+    ) as [DoneEvent];
+    const done = events.find(e => e.type === 'done') as DoneEvent | undefined;
+    expect(done).toBeDefined();
+    expect(done!.sessionId).toBe('new-session-abc');
+  });
+});
+
+describe('createCopilotAcpParser', () => {
+  it('empty line returns []', () => {
+    const parse = createCopilotAcpParser();
+    expect(parse('', 0)).toEqual([]);
+  });
+
+  it('whitespace-only line returns []', () => {
+    const parse = createCopilotAcpParser();
+    expect(parse('   \t  ', 0)).toEqual([]);
+  });
+
+  it('line starting with { that is not valid JSON → parse_error ErrorEvent', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('{bad json', 0) as [ErrorEvent];
+    expect(ev.type).toBe('error');
+    expect(ev.code).toBe('parse_error');
+    expect(ev.detail).toContain('{bad json');
+  });
+
+  it('plaintext line (no { prefix) → parse_error ErrorEvent', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('Starting copilot...', 0) as [ErrorEvent];
+    expect(ev.type).toBe('error');
+    expect(ev.code).toBe('parse_error');
+  });
+
+  it('seq parameter is respected on parse_error', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('{truncated', 5);
+    expect(ev.seq).toBe(5);
+  });
+
+  it('seq parameter is respected on TextEvent', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse('plain text', 3);
+    expect(ev.seq).toBe(3);
   });
 });

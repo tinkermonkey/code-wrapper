@@ -1,0 +1,12 @@
+node_modules/
+.git/
+.github/
+dist/
+*.log
+.vscode/
+.idea/
+.env
+.orchestrator/
+.claude_prompt_*.txt
+.repair_cycle.log
+.mcp.json
