@@ -45,6 +45,10 @@ interface RawCliEvent {
   is_error?: boolean;
   // result
   usage?: RawUsage;
+  result?: string;
+  duration_ms?: number;
+  total_cost_usd?: number;
+  num_turns?: number;
 }
 
 /**
@@ -176,6 +180,11 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
             }),
           }
         : undefined,
+      ...(raw.result !== undefined && { resultText: raw.result }),
+      ...(raw.is_error !== undefined && { isError: raw.is_error }),
+      ...(raw.duration_ms !== undefined && { durationMs: raw.duration_ms }),
+      ...(raw.total_cost_usd !== undefined && { totalCostUsd: raw.total_cost_usd }),
+      ...(raw.num_turns !== undefined && { numTurns: raw.num_turns }),
     } satisfies DoneEvent);
 
   } else if (raw.type === 'rate_limit_event') {
@@ -228,6 +237,7 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  *   assistant.message_delta notification    → TextEvent
  *   assistant.message notification          → TextEvent
  *   session.idle                            → DoneEvent
+ *   session/prompt ack (result.stopReason)  → DoneEvent { stopReason }
  *   permission/request                      → RawEvent
  *   ACP error response (msg.error)          → ErrorEvent { code: 'cli_error' }
  *   Other responses/notifications           → RawEvent (zero-loss)
@@ -328,7 +338,10 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
       } else if ((msg.result as Record<string, unknown>)?.stopReason !== undefined) {
         // Real copilot v1.x: session/prompt ack with stopReason is the done signal.
         // The fake/legacy protocol uses session.idle instead (handled above).
-        events.push({ seq: seq++, timestamp, type: 'done', sessionId: sessionUuid } satisfies DoneEvent);
+        const stopReason = (msg.result as Record<string, unknown>).stopReason as string;
+        events.push({
+          seq: seq++, timestamp, type: 'done', sessionId: sessionUuid, stopReason,
+        } satisfies DoneEvent);
         return events;
       }
       events.push({

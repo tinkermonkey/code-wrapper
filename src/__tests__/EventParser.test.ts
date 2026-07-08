@@ -220,6 +220,51 @@ describe('parseCliLine', () => {
       expect(ev.type).toBe('done');
       expect(ev.usage).toBeUndefined();
     });
+
+    it('result/is_error/duration_ms/total_cost_usd/num_turns → DoneEvent carries all of them', () => {
+      const [ev] = parseCliLine(
+        line({
+          type: 'result',
+          session_id: 'sess-done',
+          result: 'The final answer is 42.',
+          is_error: false,
+          duration_ms: 4321,
+          total_cost_usd: 0.0512,
+          num_turns: 3,
+        }),
+        0,
+      ) as [DoneEvent];
+      expect(ev).toMatchObject({
+        type: 'done',
+        sessionId: 'sess-done',
+        resultText: 'The final answer is 42.',
+        isError: false,
+        durationMs: 4321,
+        totalCostUsd: 0.0512,
+        numTurns: 3,
+      });
+    });
+
+    it('is_error: true → DoneEvent.isError is true', () => {
+      const [ev] = parseCliLine(
+        line({ type: 'result', session_id: 's', result: 'Failed partway through.', is_error: true }),
+        0,
+      ) as [DoneEvent];
+      expect(ev.isError).toBe(true);
+      expect(ev.resultText).toBe('Failed partway through.');
+    });
+
+    it('no result/is_error/duration_ms/total_cost_usd/num_turns fields → all absent on DoneEvent', () => {
+      const [ev] = parseCliLine(
+        line({ type: 'result', session_id: 's' }),
+        0,
+      ) as [DoneEvent];
+      expect(ev.resultText).toBeUndefined();
+      expect(ev.isError).toBeUndefined();
+      expect(ev.durationMs).toBeUndefined();
+      expect(ev.totalCostUsd).toBeUndefined();
+      expect(ev.numTurns).toBeUndefined();
+    });
   });
 
   // --------------------------------------------------------------- rate_limit_event
@@ -344,6 +389,32 @@ describe('createCopilotAcpParser session/new handshake', () => {
     const done = events.find(e => e.type === 'done') as DoneEvent | undefined;
     expect(done).toBeDefined();
     expect(done!.sessionId).toBe('new-session-abc');
+    expect(done!.stopReason).toBe('end_turn');
+  });
+
+  it('session/prompt ack stopReason value is passed through verbatim (e.g. max_tokens)', () => {
+    const parse = createCopilotAcpParser();
+    parse(initAck, 0);
+    parse(sessionNewAck, 1);
+    const events = parse(
+      JSON.stringify({ jsonrpc: '2.0', id: 3, result: { stopReason: 'max_tokens' } }),
+      2,
+    ) as [DoneEvent];
+    const done = events.find(e => e.type === 'done') as DoneEvent | undefined;
+    expect(done!.stopReason).toBe('max_tokens');
+  });
+
+  it('session.idle (fake/legacy protocol) DoneEvent has no stopReason', () => {
+    const parse = createCopilotAcpParser();
+    parse(initAck, 0);
+    parse(sessionNewAck, 1);
+    const events = parse(
+      JSON.stringify({ jsonrpc: '2.0', method: 'session.idle', params: {} }),
+      2,
+    ) as [DoneEvent];
+    const done = events.find(e => e.type === 'done') as DoneEvent | undefined;
+    expect(done).toBeDefined();
+    expect(done!.stopReason).toBeUndefined();
   });
 });
 
