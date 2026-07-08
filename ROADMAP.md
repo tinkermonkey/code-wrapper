@@ -173,13 +173,17 @@ Covers:
 `vitest` — fast, native ESM, no extra transpile config needed for a
 `"type": "module"` package. Add `"test": "vitest run"` to `package.json`.
 
+**Status:** 104 unit tests passing as of PR #11 (2026-07-08), plus live
+integration tests against real `claude` and `copilot` CLI invocations
+(`vitest.config.live.ts`) — Claude 5/5, Copilot 5/5.
+
 ---
 
 ## v0.4 — GitHub Copilot backend ✓
 
-**Implemented.** The Copilot backend uses the **Agent Client Protocol
-(ACP)** — `copilot --acp --stdio` — which reached GA on February 25,
-2026.
+**Implemented and live-validated.** The Copilot backend uses the **Agent
+Client Protocol (ACP)** — `copilot --acp --stdio` — which reached GA on
+February 25, 2026.
 
 Plain-text parsing (`copilot --prompt <msg>`) was explicitly ruled out:
 GitHub built ACP as the designated machine-parseable interface, and the
@@ -208,9 +212,34 @@ wrappers. ACP is its stable replacement.
 - `fake-copilot.mjs` — test binary speaking full NDJSON JSON-RPC; handles
   `initialize`, `session/new`, `session/prompt`; scenarios: `golden-path`,
   `stall`, `ignore-sigterm`, `nonzero-exit`, `permission-request`
-- Tests (13 total) — `ready`/`done` events with session ID, AbortSignal
+- Tests (13+ total) — `ready`/`done` events with session ID, AbortSignal
   mid-run, max timeout, permission/request → RawEvent, idle timeout,
   SIGKILL escalation, nonzero exit
+
+### Real-CLI hardening (PR #11, 2026-07-08)
+
+Live testing against the actual `copilot` binary (v1.0.68) surfaced and
+fixed protocol bugs that unit tests against a hand-rolled fake fixture
+could not catch:
+
+- `protocolVersion` must be an integer, not the string `'2025-01'`
+- `session/new` requires `mcpServers: []`
+- stdin must stay open until a `DoneEvent` or process `exit` — closing it
+  immediately after `session/prompt` killed the CLI before it could
+  stream text (fixed via a `proc.on('exit', ...)` handler to avoid a
+  stdin/close deadlock)
+- Resume does **not** reuse the original session UUID — the real
+  protocol is a fresh `initialize` → `session/new` → `session/prompt`
+  sequence with `--resume=<uuid>` supplying context; `session/new`
+  returns a **new** UUID for the resumed session
+- Real streaming text arrives as `agent_message_chunk` with
+  `params.update.content.text`, not the notification shapes the fake
+  fixture originally assumed
+
+Auth for headless/CI use requires a **user-owned fine-grained PAT with
+the "Copilot Requests" permission** — classic PATs (`ghp_`) are
+explicitly rejected by the CLI. See `docs/copilot-auth.md` (or the PR
+#11 description) for the full auth investigation.
 
 ### ACP error handling note
 
@@ -229,54 +258,179 @@ checks and `runWithRecovery()` do not apply to ACP mode.
 
 ---
 
-## v0.5 — Switchyard parity (Codetoreum migration)
+## v1.0 — Production release
 
-Switchyard is Python and cannot import this Node.js module directly. The
-primary migration path is Codetoreum, Switchyard's Node.js successor.
-This milestone prepares the module to be a first-class dependency of
-that migration.
+**Redefined 2026-07-08.** The original criterion — "replace the bespoke
+Claude/Copilot invocation code in documentation_robotics, codetoreum,
+phone-home, and rounds" — was written when this roadmap believed
+codetoreum would be "Switchyard's Node.js successor, once scaffolded."
+That assumption is factually wrong: codetoreum is a fully-scaffolded,
+actively-developed **Python/FastAPI** hexagonal system with its own
+2,395-LOC `ClaudeCodeAdapter`. Of the four original targets, exactly
+**one is Node.js**: documentation_robotics. The other three
+(codetoreum, phone-home, rounds) are Python and cannot depend on this
+package directly.
 
-### Codetoreum integration checklist
+Two rounds of architecture review (see `docs/v1-scope-decision.md` if
+present, or PR discussion) considered and rejected bridging the language
+gap for v1.0 — see "De-scoped: the three Python projects" below. v1.0 is
+now scoped to what's actually achievable:
 
-- [ ] Confirm `@tinkermonkey/code-wrapper` is listed in Codetoreum's
-  `package.json` once Codetoreum is scaffolded
-- [ ] Map Switchyard's `ObservabilityEvent` lifecycle types to
-  `ClaudeEvent` equivalents (document gaps in `ARCHITECTURE.md`)
-- [ ] Confirm `RawEvent` covers all Switchyard event types that have no
-  direct mapping
-- [ ] Add `task_id` / `pipeline_run_id` passthrough support if
-  Codetoreum needs them in `BaseEvent` — or document that callers add
-  metadata fields via a wrapper
-- [ ] Redis sink adapter — lives in Codetoreum, not here, but needs the
-  `seq` field to be reliable for XADD ordering (already is)
+- [ ] Published to npm as `@tinkermonkey/code-wrapper`
+- [ ] `CHANGELOG.md` with semver entries from v0.1 onward
+- [ ] `README.md` with quick-start, all `ProcessOptions` documented,
+  event type table, and session management guide
+- [ ] Bun runtime compatibility smoke-tested (`CliProcess` under
+  `Bun.spawn`'s `node:child_process` compat layer) — documentation_robotics'
+  WebSocket server runs under Bun; this is unvalidated
+- [ ] documentation_robotics fully migrated off its three duplicated
+  Claude implementations and its plain-text Copilot client — see
+  migration checklist below
 
-### Switchyard patterns already covered
+### documentation_robotics migration — capability-parity audit findings
 
-| Switchyard pattern | code-wrapper equivalent |
-|----|----||
-| `subprocess.Popen` + line-by-line read | `CliProcess` + readline |
-| `system/init` session capture | `ReadyEvent` |
-| `--resume <session_id>` | `ProcessOptions.sessionId + isFirstMessage: false` |
-| Two-phase cleanup (wait → kill) | SIGTERM → 3s → SIGKILL |
-| All raw CLI event types | `EventParser` (zero-loss) |
-| `result` + `usage.*` | `DoneEvent.usage` |
+A line-by-line capability-parity audit (2026-07-08, comparing the actual
+source of both projects, not just capability summaries) found the
+migration is a **net upgrade, not a pure upgrade** — four items need
+explicit engineering attention, not just a library swap:
+
+- [ ] **Copilot `explain` one-shot path has no ACP equivalent.**
+  `server.ts:2318-2347` has a third Copilot invocation path (`gh copilot
+  explain` / `copilot explain`) separate from `copilot-client.ts`, with
+  no session/resume flag at all. code-wrapper's Copilot backend only
+  implements ACP. Confirm whether this path is actually reachable/used
+  before assuming parity; if it is, it needs either an ACP-based
+  replacement or an explicit decision to drop it.
+- [ ] **`--dangerously-skip-permissions` → `--permission-mode
+  bypassPermissions` needs a live smoke test.** Both flags exist on the
+  CLI and are very likely equivalent, but this is a flag substitution,
+  not a renamed alias — verify behaviorally, not just by reading
+  `--help` text, against the exact `claude` CLI version(s)
+  documentation_robotics targets.
+- [ ] **Session-ID pre-assignment is a migration footgun.**
+  documentation_robotics generates a session UUID *before* the first
+  message, shows it in the chat banner, and embeds it in the log
+  filename (`chat-logger.ts`). code-wrapper's `SessionManager` idiom
+  (per its own README) leaves the CLI session ID undefined until a
+  `done` event arrives on turn 1. `ProcessOptions.sessionId` DOES accept
+  a caller-supplied ID structurally — migration code must explicitly
+  thread its own UUID through rather than following the default
+  `SessionManager` pattern, or the "session ID shown before first
+  message" UX breaks.
+- [ ] **Timeout defaults will kill currently-unbounded calls.**
+  code-wrapper defaults to `idleTimeout: 300` / `maxTimeout: 3600`
+  (seconds). Two of the three current documentation_robotics
+  implementations impose no timeout at all — a long-running audit or
+  chat call would previously run indefinitely. Both the interactive
+  chat path and `audit/ai/runner.ts`'s audit path need explicit
+  `ProcessOptions` timeout overrides set before/during migration, not
+  left at the library default.
+- [ ] **Verify the WebSocket frontend's use of `chat.tool.result`.**
+  `server.ts` currently forwards the raw `result` event's final-text
+  field to the browser via a `chat.tool.result` WS message.
+  code-wrapper's `DoneEvent` only carries `sessionId` + usage stats —
+  no equivalent text field. If the frontend actually displays that
+  field as the completion payload (not yet confirmed — frontend code
+  wasn't in scope of the backend audit), it needs a replacement (e.g.
+  accumulate the final text client-side from `TextEvent`s instead).
+
+Everything else audited (event/data coverage, non-JSON-line handling,
+ambient `claude login` auth passthrough, most CLI flags, Copilot
+`--continue`-vs-`--resume=<uuid>` session semantics, `Bun.spawn` option
+usage) came back **PARITY or GAIN** — no other losses found. The
+migration itself should proceed in three ordered PRs: delete the dead
+`agents/claude-code.ts` (238 LOC, unused), replace `claude-code-client.ts`
+(the `dr chat` path), then replace the `server.ts` inline WebSocket path
+(currently has *no* session support at all — this is the biggest
+capability gain of the whole migration, not just deduplication).
+
+### De-scoped: the three Python projects
+
+**phone-home:** its `shared/claude_session.py` (816 LOC) is already a
+single, well-factored driver serving three consumer types (control
+plane, generic agent nodes, specialist nodes), with working session
+persistence, stale-session auto-recovery, and battle-tested SIGTERM→
+SIGKILL teardown (added after a real orphaned-process production
+incident). Replacing it through any Node bridge would be a lateral move
+purchased with the fleet's most reliability-sensitive component, to gain
+Copilot support it has zero demand for. Not planned.
+
+**codetoreum:** wrong language (Python/FastAPI) and a diverging Copilot
+strategy — its planned Copilot integration is a pure HTTP client against
+GitHub's hosted Copilot Cloud Agent API, architecturally unrelated to
+local ACP. Its hexagonal port/adapter structure (`ICodingAgent`) means a
+future implementation swap is cheap if this ever changes. Not planned.
+
+**rounds:** wrong language and wrong interaction model — single-shot
+`claude -p ... --output-format json` envelope calls (local subprocess
+and SSH-remote-to-agent-node), no streaming, no sessions, no Copilot.
+Its one real deficiency (no graceful SIGTERM-before-SIGKILL phase on
+timeout) is a ~20-line local fix, not a reason to adopt a cross-language
+bridge. Not planned.
+
+If a Python project's needs change:
+- For "stop hand-rolling Claude's stream-json protocol in Python," the
+  first candidate is Anthropic's official **Claude Agent SDK for
+  Python** (`claude-agent-sdk`) — verify current feature parity, but it
+  will always beat a bridge to this package on simplicity for anything
+  Claude-only.
+- For **local Copilot ACP** specifically, no Python-native equivalent
+  exists — this package's hard-won ACP implementation (see the v0.4
+  real-CLI-hardening notes above) is the only place that protocol
+  knowledge lives. That's the trigger for revisiting a bridge — see v2
+  below.
 
 ---
 
-## v1.0 — Production release
+## v2 (future, trigger-gated) — `code-wrapper exec`
 
-Gating criteria for a stable public API:
+**Not being built now.** Recorded here so the design isn't re-litigated
+from scratch if the trigger fires.
 
-- [ ] v0.2, v0.3, v0.4 milestones complete
-- [ ] Copilot backend tested against a real `copilot --acp --stdio` invocation
-- [ ] DR CLI integrated and using `@tinkermonkey/code-wrapper` instead
-  of its own subprocess layer
-- [ ] Codetoreum using `@tinkermonkey/code-wrapper` (or a
-  migration-readiness review completed)
-- [ ] `CHANGELOG.md` with semver entries from v0.1 onward
-- [ ] Published to npm as `@tinkermonkey/code-wrapper`
-- [ ] `README.md` with quick-start, all `ProcessOptions` documented,
-  event type table, and session management guide
+**Design:** a *thick*, compiled CLI (`bun build --compile` or Node SEA)
+built on code-wrapper's own internals — it performs session management,
+event parsing, resume/stale-session recovery, and retry logic itself,
+and exposes only a structured output contract (NDJSON events per line,
+or a single JSON envelope on completion) to whatever spawns it. A Python
+(or any other language) caller's job shrinks to: spawn the process, read
+stdout, parse JSON — not hand-roll the wire protocol.
+
+**Why not a thin shim:** a thin passthrough (same output format,
+different binary name) just retargets the existing bespoke parsing code
+without shrinking it — rejected in the first architecture review.
+
+**Why not now, given the thick design is real:** its two value
+propositions — centralized session/resume management and Copilot ACP —
+are wanted by zero of the de-scoped Python projects today. phone-home
+already has working session management; codetoreum and rounds are both
+single-shot with no session concept; no Python project has Copilot
+demand. Building it now means paying a second-product-surface tax
+(versioned NDJSON wire contract, contract tests, fleet version pinning,
+double-hop process supervision — the CLI's own `claude` child can orphan
+if the CLI process is hard-killed, unless it implements its own
+process-group management) for consumers who would adopt it as a
+lateral-or-worse move.
+
+**Explicit trigger:** build this the first time either becomes true:
+1. A Python project needs **local Copilot ACP** (not the hosted HTTP
+   Cloud Agent API codetoreum is planning).
+2. A Python project needs **one contract over both Claude and Copilot**
+   backends (the terraform-provider-normalization pattern — only
+   valuable when a consumer actually wants multiple backends).
+
+**Cheap prep to do now, regardless of trigger timing:**
+- Document the `ClaudeEvent` union as a versioned schema (already TS
+  types — nearly free, and doubles as library documentation).
+- Fold process-group/child-cleanup behavior into the Bun compatibility
+  validation documentation_robotics' migration already needs — the ACP
+  stdin-timing bug (see v0.4 notes) is a standing reminder that
+  process/stdio lifecycle behavior is where this project's bugs
+  concentrate.
+
+**Distribution, if built:** the existing Ansible-managed fleet makes
+"distribute a compiled binary to N hosts, pin its version" a single
+role — solves the cross-host Node-runtime-dependency problem that would
+otherwise block `rounds`' SSH-remote-invocation pattern.
 
 ---
 
