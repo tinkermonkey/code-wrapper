@@ -109,6 +109,28 @@ Preserve the `RawEvent` so the full user turn is still available.
 
 **Priority:** Low — `--verbose` is always passed by `CliProcess`.
 
+### DoneEvent result data (2026-07-08) ✓
+
+**Why:** `DoneEvent` collapsed the CLIs' final-turn payload down to just
+`{sessionId, usage}`, dropping data both CLIs actually report — code-wrapper
+issue #20, finding #8, and the equivalent v1.0 migration-audit finding above.
+Claude's raw `result` event carries `.result` (the agent's own final
+summary/answer text — distinct from the streamed `assistant` text blocks),
+`.is_error`, `.duration_ms`, `.total_cost_usd`, and `.num_turns`. Copilot's
+ACP `session/prompt` ack carries `.stopReason` (e.g. `'end_turn'`).
+
+**Change:** Added optional, additive fields to `DoneEvent`: `resultText`,
+`isError`, `durationMs`, `totalCostUsd`, `numTurns` (Claude-only, populated
+in `parseCliLine`'s `result` branch) and `stopReason` (Copilot-only,
+populated in `createCopilotAcpParser`'s `session/prompt`-ack branch).
+Nothing existing was removed or renamed. Copilot has no equivalent to
+`resultText` — its final answer is already fully covered by the streamed
+`agent_message_chunk` `TextEvent`s, so that field is intentionally left
+unset rather than populated from something that isn't actually there.
+Verified against both real CLIs (not just fixtures): Claude returned
+`resultText: "hello"`, `isError: false`, `durationMs`, `totalCostUsd`,
+`numTurns: 1`; Copilot returned `stopReason: "end_turn"`.
+
 ---
 
 ## v0.3 — Test suite
@@ -325,14 +347,17 @@ explicit engineering attention, not just a library swap:
   chat path and `audit/ai/runner.ts`'s audit path need explicit
   `ProcessOptions` timeout overrides set before/during migration, not
   left at the library default.
-- [ ] **Verify the WebSocket frontend's use of `chat.tool.result`.**
+- [x] **Verify the WebSocket frontend's use of `chat.tool.result`.**
   `server.ts` currently forwards the raw `result` event's final-text
   field to the browser via a `chat.tool.result` WS message.
-  code-wrapper's `DoneEvent` only carries `sessionId` + usage stats —
-  no equivalent text field. If the frontend actually displays that
-  field as the completion payload (not yet confirmed — frontend code
-  wasn't in scope of the backend audit), it needs a replacement (e.g.
-  accumulate the final text client-side from `TextEvent`s instead).
+  ~~code-wrapper's `DoneEvent` only carries `sessionId` + usage stats —
+  no equivalent text field.~~ **Resolved** (code-wrapper issue #20,
+  finding #8): `DoneEvent` now additionally carries `resultText`,
+  `isError`, `durationMs`, `totalCostUsd`, `numTurns` (from Claude's
+  `result` event) and `stopReason` (from Copilot's ACP `session/prompt`
+  ack) — see "DoneEvent result data" note under v0.2 below. The
+  migration's WebSocket forwarding can now read `resultText` directly
+  instead of accumulating `TextEvent`s client-side.
 
 Everything else audited (event/data coverage, non-JSON-line handling,
 ambient `claude login` auth passthrough, most CLI flags, Copilot

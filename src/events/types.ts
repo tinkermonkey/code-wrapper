@@ -80,6 +80,27 @@ export interface DoneEvent extends BaseEvent {
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
   };
+  /**
+   * Claude's own final summary/answer text (`result.result`) — distinct from
+   * the streamed `assistant` text blocks. Claude-only: Copilot's ACP
+   * `session/prompt` ack carries no equivalent field, and its final answer is
+   * already fully covered by the streamed `TextEvent`s, so this is left
+   * unset rather than populated from something that isn't actually there.
+   */
+  resultText?: string;
+  /** Claude's `result.is_error` — whether the turn ended in an error state */
+  isError?: boolean;
+  /** Claude's `result.duration_ms` — wall-clock duration of the turn */
+  durationMs?: number;
+  /** Claude's `result.total_cost_usd` */
+  totalCostUsd?: number;
+  /** Claude's `result.num_turns` */
+  numTurns?: number;
+  /**
+   * Copilot ACP's `session/prompt` ack `result.stopReason` (e.g. `'end_turn'`).
+   * Copilot-only — Claude's `result` event has no equivalent field.
+   */
+  stopReason?: string;
 }
 
 export type ErrorCode =
