@@ -38,7 +38,7 @@ WORKDIR /workspace/code-wrapper
 COPY package.json package-lock.json ./
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts
+    npm ci --ignore-scripts --include=dev
 
 # ============================================================================
 # Stage 3.5: Install GitHub Copilot CLI
