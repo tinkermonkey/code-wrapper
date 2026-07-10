@@ -175,3 +175,15 @@ When prerequisites are absent the relevant `describe` block is skipped — it do
 npx vitest run src/__tests__/live/claude.live.test.ts --config vitest.config.live.ts
 npx vitest run src/__tests__/live/copilot.live.test.ts --config vitest.config.live.ts
 ```
+
+### E2E suite
+
+```sh
+npm run test:e2e
+```
+
+Exercises the same four real-CLI scenarios as end-to-end acceptance checks: Claude golden-path file creation, Claude multi-turn session resume, Claude native-spawn-failure handling, and Copilot golden-path file creation. Prerequisites are the same credentials/auth baseline as the live suite above (`claude`/`copilot` in `PATH`, `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` or an authenticated Copilot session) — `npm run test:e2e` loads `.env` the same way `npm run test:live` does.
+
+**Measured cost:** ~$0.086 per full suite run, from real `DoneEvent.usage` on the three Claude API turns at current Claude Sonnet 5 pricing. The Copilot ACP protocol (`copilot --acp --stdio`) does not report token usage in its responses, so the Copilot scenario contributes no measurable per-token cost through this wrapper — it draws against the account's included Copilot request allowance instead.
+
+**This suite is never run automatically.** It is not part of `npm test`, `npm run test:live`, or any CI job (see `.github/workflows/ci.yml`) — run it manually and only when you intend to spend real API credit.

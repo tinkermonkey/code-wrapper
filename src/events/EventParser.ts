@@ -233,7 +233,9 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  *
  * ACP notification → ClaudeEvent mapping:
  *   session/new result (result.sessionId)  → ReadyEvent
- *   session/update (assistant.message_delta) → TextEvent
+ *   session/update (agent_message_chunk)    → TextEvent
+ *   session/update (tool_call)              → ToolUseEvent, or RawEvent if toolCallId is missing
+ *   session/update (tool_call_update, terminal status) → ToolResultEvent, or RawEvent if toolCallId is missing
  *   assistant.message_delta notification    → TextEvent
  *   assistant.message notification          → TextEvent
  *   session.idle                            → DoneEvent
@@ -285,6 +287,54 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
         if (update?.sessionUpdate === 'agent_message_chunk') {
           const text = (update?.content?.text ?? '') as string;
           if (text) events.push({ seq: seq++, timestamp, type: 'text', text } satisfies TextEvent);
+          return events;
+        }
+        // Agent invokes a tool (fs edit, shell exec, search, etc.) — toolCallId
+        // is the ACP call handle; kind is the closest analog to Claude's tool
+        // name (a category like 'edit'/'execute'/'read'), rawInput mirrors
+        // Claude's tool_use.input.
+        if (update?.sessionUpdate === 'tool_call') {
+          const toolCallId = update.toolCallId as string | undefined;
+          if (toolCallId) {
+            events.push({
+              seq: seq++, timestamp, type: 'tool_use',
+              id: toolCallId,
+              name: String(update.kind ?? update.title ?? 'tool'),
+              input: update.rawInput ?? {},
+            } satisfies ToolUseEvent);
+          } else {
+            // No toolCallId to correlate a future tool_call_update against —
+            // preserve the raw message rather than silently dropping it.
+            events.push({
+              seq: seq++, timestamp, type: 'raw',
+              rawType: 'acp/tool_call_missing_id', data: msg as unknown,
+            } satisfies RawEvent);
+          }
+          return events;
+        }
+        // Terminal status of a previously-announced tool_call. Intermediate
+        // ('pending'/'in_progress') updates carry no new information worth
+        // surfacing as an event.
+        if (update?.sessionUpdate === 'tool_call_update') {
+          const toolCallId = update.toolCallId as string | undefined;
+          const status = update.status as string | undefined;
+          if (toolCallId && (status === 'completed' || status === 'failed')) {
+            const rawOutput = update.rawOutput as Record<string, unknown> | undefined;
+            const output = typeof rawOutput?.content === 'string'
+              ? rawOutput.content
+              : JSON.stringify(rawOutput ?? {});
+            events.push({
+              seq: seq++, timestamp, type: 'tool_result',
+              toolUseId: toolCallId, isError: status === 'failed', output,
+            } satisfies ToolResultEvent);
+          } else if (!toolCallId && (status === 'completed' || status === 'failed')) {
+            // Terminal status with nothing to correlate it against — preserve
+            // the raw message rather than silently dropping it.
+            events.push({
+              seq: seq++, timestamp, type: 'raw',
+              rawType: 'acp/tool_call_update_missing_id', data: msg as unknown,
+            } satisfies RawEvent);
+          }
           return events;
         }
         // Fake/legacy: params.type === 'assistant.message_delta' with params.data.deltaContent
