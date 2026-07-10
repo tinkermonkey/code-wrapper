@@ -33,6 +33,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "vitest run --config vitest.config.live.ts",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "prepare": "npm run build"
   },
   "keywords": [

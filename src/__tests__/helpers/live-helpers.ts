@@ -1,6 +1,12 @@
 import { expect } from 'vitest';
 import { CliProcess } from '../../process/CliProcess.js';
-import type { ClaudeEvent, ReadyEvent, DoneEvent, ErrorEvent } from '../../events/types.js';
+import type {
+  ClaudeEvent,
+  ReadyEvent,
+  DoneEvent,
+  ErrorEvent,
+  TextEvent,
+} from '../../events/types.js';
 import type { CliBackend, ProcessOptions } from '../../process/types.js';
 
 export async function collectLive(
@@ -31,6 +37,13 @@ export function assertEventStreamStructure(events: ClaudeEvent[]): void {
   const done = events.find(e => e.type === 'done') as DoneEvent;
   expect(ready.sessionId).toBe(done.sessionId);
   expect(ready.sessionId).toBeTruthy();
+}
+
+export function collectResultText(events: ClaudeEvent[]): string {
+  return events
+    .filter((e): e is TextEvent => e.type === 'text')
+    .map(e => e.text)
+    .join('');
 }
 
 export async function getLiveCredentials(backend: CliBackend): Promise<{
