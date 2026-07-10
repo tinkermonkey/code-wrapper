@@ -201,6 +201,32 @@ integration tests against real `claude` and `copilot` CLI invocations
 
 ---
 
+## Real-token E2E integration test suite ✓ (#22, merged 2026-07-10)
+
+**Implemented.** A second, separate test tier from `vitest.config.live.ts`,
+validating that a realistic consumer invoking code-wrapper the way an
+actual application would gets a **correct result** back from a real
+coding task — not just well-formed events.
+
+- `vitest.config.e2e.ts` / `npm run test:e2e` — isolated tier, not wired
+  into `test`/`test:live`/CI, manual/on-demand only
+- Scenario 1 (Claude golden-path): substantive file-creation task,
+  evaluated by reading the file back off disk
+- Scenario 2 (Claude multi-turn resume): turn 1 states a value, turn 2
+  resumes and recalls it via `collectResultText()` / `DoneEvent.resultText`
+- Scenario 3 (Copilot golden-path via ACP): same file-creation task
+  through the Copilot backend
+- Scenario 4 (real error condition): invalid working directory, a genuine
+  CLI-native failure, not a fixture
+- All evaluation is deterministic (filesystem/substring checks) — no
+  LLM-as-judge
+- Real per-run cost measured and documented in `README.md`
+
+Delivered as sub-issues #24 (infra), #25 (Claude scenarios), #26 (Copilot
+scenario), #27 (cost measurement + docs), all shipped via PR #28.
+
+---
+
 ## v0.4 — GitHub Copilot backend ✓
 
 **Implemented and live-validated.** The Copilot backend uses the **Agent
@@ -316,37 +342,40 @@ source of both projects, not just capability summaries) found the
 migration is a **net upgrade, not a pure upgrade** — four items need
 explicit engineering attention, not just a library swap:
 
-- [ ] **Copilot `explain` one-shot path has no ACP equivalent.**
-  `server.ts:2318-2347` has a third Copilot invocation path (`gh copilot
-  explain` / `copilot explain`) separate from `copilot-client.ts`, with
-  no session/resume flag at all. code-wrapper's Copilot backend only
-  implements ACP. Confirm whether this path is actually reachable/used
-  before assuming parity; if it is, it needs either an ACP-based
-  replacement or an explicit decision to drop it.
+- [x] **Copilot `explain` one-shot path has no ACP equivalent.** Resolved
+  2026-07-08 (see #20's comment thread): the modern standalone
+  `@github/copilot` CLI has no `explain` subcommand at all — it's
+  exclusive to the archived `gh copilot` extension (deprecated
+  2025-10-30). **Decision:** no code-wrapper change needed;
+  documentation_robotics replaces both the `gh copilot explain` and
+  `copilot explain` fallback branches with a canned/templated prompt sent
+  through the normal ACP `session/prompt` path `copilot-client.ts`
+  already uses. Bonus finding from the same investigation:
+  `copilot-client.ts`'s two `"gh"`-branch references are dead code
+  (`copilotCommand` is always `"copilot"`) — tracked as #32.
 - [ ] **`--dangerously-skip-permissions` → `--permission-mode
-  bypassPermissions` needs a live smoke test.** Both flags exist on the
-  CLI and are very likely equivalent, but this is a flag substitution,
-  not a renamed alias — verify behaviorally, not just by reading
-  `--help` text, against the exact `claude` CLI version(s)
-  documentation_robotics targets.
-- [ ] **Session-ID pre-assignment is a migration footgun.**
-  documentation_robotics generates a session UUID *before* the first
-  message, shows it in the chat banner, and embeds it in the log
-  filename (`chat-logger.ts`). code-wrapper's `SessionManager` idiom
-  (per its own README) leaves the CLI session ID undefined until a
-  `done` event arrives on turn 1. `ProcessOptions.sessionId` DOES accept
-  a caller-supplied ID structurally — migration code must explicitly
-  thread its own UUID through rather than following the default
-  `SessionManager` pattern, or the "session ID shown before first
-  message" UX breaks.
-- [ ] **Timeout defaults will kill currently-unbounded calls.**
-  code-wrapper defaults to `idleTimeout: 300` / `maxTimeout: 3600`
-  (seconds). Two of the three current documentation_robotics
-  implementations impose no timeout at all — a long-running audit or
-  chat call would previously run indefinitely. Both the interactive
-  chat path and `audit/ai/runner.ts`'s audit path need explicit
-  `ProcessOptions` timeout overrides set before/during migration, not
-  left at the library default.
+  bypassPermissions` needs a live smoke test.** Still open — tracked as
+  #31. Both flags exist on the CLI and are very likely equivalent, but
+  this is a flag substitution, not a renamed alias — verify behaviorally,
+  not just by reading `--help` text, against the exact `claude` CLI
+  version(s) documentation_robotics targets.
+- [x] **Session-ID pre-assignment is a migration footgun.** Resolved
+  2026-07-08 (see #20's comment thread): Claude honors a caller-supplied
+  ID (`CliProcess.ts:369-371`), but Copilot ACP's `session/new` never
+  accepts one — the ID always comes back from the CLI (confirmed a
+  resumed session gets a **new** server-assigned UUID, not the original
+  one). Since the two backends don't both support caller-assignment,
+  **decision: axe pre-assignment uniformly across both backends** —
+  documentation_robotics moves the "show session ID" moment from before
+  the first message to `ReadyEvent`, for both backends. This is a
+  documentation_robotics-side UI/UX timing change (`chat.ts`/
+  `chat-logger.ts`), not a code-wrapper gap.
+- [x] **Timeout defaults will kill currently-unbounded calls.** Resolved
+  2026-07-08: **decision — adopt code-wrapper's `idleTimeout: 300` /
+  `maxTimeout: 3600` defaults as-is**, no `ProcessOptions` overrides
+  planned at migration time. If a specific real workflow (e.g. a very
+  large `audit/ai/runner.ts` run) is later found to need more headroom,
+  that's a follow-up based on observed need, not a pre-emptive override.
 - [x] **Verify the WebSocket frontend's use of `chat.tool.result`.**
   `server.ts` currently forwards the raw `result` event's final-text
   field to the browser via a `chat.tool.result` WS message.
