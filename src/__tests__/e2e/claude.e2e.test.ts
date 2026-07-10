@@ -41,6 +41,7 @@ describe.skipIf(!claudeAvailable || !hasCredentials)('claude e2e scenarios', () 
         prompt: `Create a file named e2e-sentinel.txt in the current working directory. Its exact contents should be the single line: ${sentinel}. Do not create any other files. Then reply with only the word Done.`,
         skipPermissions: true,
         maxTimeout: 90,
+        idleTimeout: 30,
       });
 
       assertEventStreamStructure(events);
