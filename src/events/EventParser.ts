@@ -234,8 +234,8 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  * ACP notification → ClaudeEvent mapping:
  *   session/new result (result.sessionId)  → ReadyEvent
  *   session/update (agent_message_chunk)    → TextEvent
- *   session/update (tool_call)              → ToolUseEvent
- *   session/update (tool_call_update, terminal status) → ToolResultEvent
+ *   session/update (tool_call)              → ToolUseEvent, or RawEvent if toolCallId is missing
+ *   session/update (tool_call_update, terminal status) → ToolResultEvent, or RawEvent if toolCallId is missing
  *   assistant.message_delta notification    → TextEvent
  *   assistant.message notification          → TextEvent
  *   session.idle                            → DoneEvent
@@ -299,9 +299,16 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
             events.push({
               seq: seq++, timestamp, type: 'tool_use',
               id: toolCallId,
-              name: (update.kind ?? update.title ?? 'tool') as string,
+              name: String(update.kind ?? update.title ?? 'tool'),
               input: update.rawInput ?? {},
             } satisfies ToolUseEvent);
+          } else {
+            // No toolCallId to correlate a future tool_call_update against —
+            // preserve the raw message rather than silently dropping it.
+            events.push({
+              seq: seq++, timestamp, type: 'raw',
+              rawType: 'acp/tool_call_missing_id', data: msg as unknown,
+            } satisfies RawEvent);
           }
           return events;
         }
@@ -320,6 +327,13 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
               seq: seq++, timestamp, type: 'tool_result',
               toolUseId: toolCallId, isError: status === 'failed', output,
             } satisfies ToolResultEvent);
+          } else if (!toolCallId && (status === 'completed' || status === 'failed')) {
+            // Terminal status with nothing to correlate it against — preserve
+            // the raw message rather than silently dropping it.
+            events.push({
+              seq: seq++, timestamp, type: 'raw',
+              rawType: 'acp/tool_call_update_missing_id', data: msg as unknown,
+            } satisfies RawEvent);
           }
           return events;
         }

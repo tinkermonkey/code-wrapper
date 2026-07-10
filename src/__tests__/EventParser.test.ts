@@ -544,4 +544,71 @@ describe('createCopilotAcpParser', () => {
     }), 0);
     expect(result).toEqual([]);
   });
+
+  it('session/update tool_call with missing toolCallId → RawEvent (zero-loss)', () => {
+    const parse = createCopilotAcpParser();
+    const msg = {
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: { sessionUpdate: 'tool_call', title: 'Creating a file', kind: 'edit', rawInput: {} },
+      },
+    };
+    const [ev] = parse(line(msg), 0) as [RawEvent];
+    expect(ev.type).toBe('raw');
+    expect(ev.rawType).toBe('acp/tool_call_missing_id');
+    expect(ev.data).toEqual(msg);
+  });
+
+  it('session/update tool_call_update terminal status with missing toolCallId → RawEvent (zero-loss)', () => {
+    const parse = createCopilotAcpParser();
+    const msg = {
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: { sessionUpdate: 'tool_call_update', status: 'completed', rawOutput: { content: 'done' } },
+      },
+    };
+    const [ev] = parse(line(msg), 0) as [RawEvent];
+    expect(ev.type).toBe('raw');
+    expect(ev.rawType).toBe('acp/tool_call_update_missing_id');
+    expect(ev.data).toEqual(msg);
+  });
+
+  it('session/update tool_call kind: 0 (falsy but non-nullish) is coerced to string, not skipped by ??', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: { sessionUpdate: 'tool_call', toolCallId: 'call_falsy', kind: 0, title: 'fallback title' },
+      },
+    }), 0) as [ToolUseEvent];
+    expect(ev.name).toBe('0');
+  });
+
+  it('session/update tool_call_update rawOutput.content non-string falls back to JSON.stringify', () => {
+    const parse = createCopilotAcpParser();
+    const rawOutput = { exitCode: 1, stderr: 'boom' };
+    const [ev] = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: { sessionUpdate: 'tool_call_update', toolCallId: 'call_abc123', status: 'failed', rawOutput },
+      },
+    }), 0) as [ToolResultEvent];
+    expect(ev.output).toBe(JSON.stringify(rawOutput));
+  });
+
+  it('session/update tool_call_update with no rawOutput falls back to JSON.stringify({})', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: { sessionUpdate: 'tool_call_update', toolCallId: 'call_abc123', status: 'completed' },
+      },
+    }), 0) as [ToolResultEvent];
+    expect(ev.output).toBe('{}');
+  });
 });
