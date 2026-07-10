@@ -455,4 +455,93 @@ describe('createCopilotAcpParser', () => {
     const [ev] = parse('plain text', 3);
     expect(ev.seq).toBe(3);
   });
+
+  it('session/update tool_call → ToolUseEvent', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        sessionId: 'sess-1',
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'call_abc123',
+          title: 'Creating /tmp/e2e-sentinel.txt',
+          kind: 'edit',
+          status: 'pending',
+          rawInput: { path: '/tmp/e2e-sentinel.txt', file_text: 'hello' },
+        },
+      },
+    }), 0) as [ToolUseEvent];
+    expect(ev.type).toBe('tool_use');
+    expect(ev.id).toBe('call_abc123');
+    expect(ev.name).toBe('edit');
+    expect(ev.input).toEqual({ path: '/tmp/e2e-sentinel.txt', file_text: 'hello' });
+  });
+
+  it('session/update tool_call without a kind falls back to title', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'call_xyz',
+          title: 'Run a shell command',
+          rawInput: { command: 'ls' },
+        },
+      },
+    }), 0) as [ToolUseEvent];
+    expect(ev.name).toBe('Run a shell command');
+  });
+
+  it('session/update tool_call_update with terminal status "completed" → ToolResultEvent', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'call_abc123',
+          status: 'completed',
+          rawOutput: { content: 'Created file /tmp/e2e-sentinel.txt with 5 characters' },
+        },
+      },
+    }), 0) as [ToolResultEvent];
+    expect(ev.type).toBe('tool_result');
+    expect(ev.toolUseId).toBe('call_abc123');
+    expect(ev.isError).toBe(false);
+    expect(ev.output).toBe('Created file /tmp/e2e-sentinel.txt with 5 characters');
+  });
+
+  it('session/update tool_call_update with terminal status "failed" → ToolResultEvent { isError: true }', () => {
+    const parse = createCopilotAcpParser();
+    const [ev] = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'call_abc123',
+          status: 'failed',
+          rawOutput: { content: 'Permission denied' },
+        },
+      },
+    }), 0) as [ToolResultEvent];
+    expect(ev.isError).toBe(true);
+  });
+
+  it('session/update tool_call_update with non-terminal status → []', () => {
+    const parse = createCopilotAcpParser();
+    const result = parse(line({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: { sessionUpdate: 'tool_call_update', toolCallId: 'call_abc123', status: 'in_progress' },
+      },
+    }), 0);
+    expect(result).toEqual([]);
+  });
 });

@@ -1,3 +1,12 @@
+/**
+ * Full end-to-end acceptance scenario against the real `copilot` CLI — not fixtures.
+ * Run via `npm run test:e2e`; never part of `npm test`, `npm run test:live`, or CI.
+ *
+ * Copilot's ACP protocol (`copilot --acp --stdio`) reports no token usage in its
+ * responses, so DoneEvent.usage is always undefined here — this scenario draws
+ * against the account's included Copilot request allowance rather than metered
+ * per-token API cost. See claude.e2e.test.ts for the suite's measured $/run figure.
+ */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';

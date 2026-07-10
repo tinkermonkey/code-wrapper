@@ -1,3 +1,11 @@
+/**
+ * Full end-to-end acceptance scenarios against the real `claude` CLI — not fixtures.
+ * Run via `npm run test:e2e`; never part of `npm test`, `npm run test:live`, or CI.
+ *
+ * Measured cost (real DoneEvent.usage at current Claude Sonnet 5 pricing):
+ * ~$0.086/run for the full E2E suite (this file's three Claude API turns), compared
+ * against the live suite's reference cost of ~$0.06/run.
+ */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
