@@ -10,3 +10,8 @@ dist/
 .claude_prompt_*.txt
 .repair_cycle.log
 .mcp.json
+.claude/
+ARCHITECTURE.md
+ROADMAP.md
+README.md
+src/

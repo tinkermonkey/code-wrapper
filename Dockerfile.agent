@@ -43,10 +43,8 @@ RUN --mount=type=cache,target=/root/.npm \
 # ============================================================================
 # Stage 3.5: Install GitHub Copilot CLI
 # ============================================================================
-# The standalone @github/copilot package provides the 'copilot' binary.
-# This is NOT the archived 'gh copilot' extension — that was deprecated Oct 2025.
-# Authentication at runtime requires COPILOT_GITHUB_TOKEN env var.
-RUN npm install -g @github/copilot
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g --ignore-scripts @github/copilot
 
 # ============================================================================
 # Stage 4: Ownership and Permissions
