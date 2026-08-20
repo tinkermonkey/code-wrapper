@@ -25,10 +25,12 @@
   "files": [
     "dist",
     "src",
+    "schemas",
     "ARCHITECTURE.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run generate-schema && tsc",
+    "generate-schema": "tsx scripts/generate-schema.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -52,6 +54,8 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "dotenv": "^17.4.2",
+    "ts-json-schema-generator": "^2.9.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.5.0",
     "vitest": "^3.0.0"
   },

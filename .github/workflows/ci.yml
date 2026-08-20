@@ -19,6 +19,18 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Generate schema
+        run: npm run generate-schema
+
+      - name: Check schema drift
+        run: |
+          git diff --exit-code schemas/claude-event.v1.schema.json || (
+            echo "❌ Schema has drifted from src/events/types.ts"
+            echo "Run 'npm run generate-schema' to regenerate"
+            exit 1
+          )
+
       - run: npm run typecheck
       - run: npm test
 

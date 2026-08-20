@@ -1,0 +1,695 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tinkermonkey.github.io/code-wrapper/claude-event.v1.schema.json",
+  "title": "Claude Event Schema v1",
+  "description": "Wire protocol event format for code-wrapper binary NDJSON output. Each line in the NDJSON stream is a JSON object conforming to one of the ClaudeEvent discriminated union types. The top-level discriminator is the \"type\" field. Wire protocol version is indicated by the \"v\" field (currently 1).",
+  "version": "1",
+  "oneOf": [
+    {
+      "$ref": "#/definitions/TextEvent"
+    },
+    {
+      "$ref": "#/definitions/ThinkingEvent"
+    },
+    {
+      "$ref": "#/definitions/ToolUseEvent"
+    },
+    {
+      "$ref": "#/definitions/ToolResultEvent"
+    },
+    {
+      "$ref": "#/definitions/ProgressEvent"
+    },
+    {
+      "$ref": "#/definitions/ReadyEvent"
+    },
+    {
+      "$ref": "#/definitions/RetryEvent"
+    },
+    {
+      "$ref": "#/definitions/DoneEvent"
+    },
+    {
+      "$ref": "#/definitions/ErrorEvent"
+    },
+    {
+      "$ref": "#/definitions/RawEvent"
+    }
+  ],
+  "definitions": {
+    "ClaudeEventType": {
+      "type": "string",
+      "enum": [
+        "text",
+        "thinking",
+        "tool_use",
+        "tool_result",
+        "progress",
+        "ready",
+        "retry",
+        "done",
+        "error",
+        "raw"
+      ]
+    },
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/definitions/ClaudeEventType"
+        }
+      },
+      "required": [
+        "seq",
+        "timestamp",
+        "type"
+      ]
+    },
+    "TextEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "text"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "text",
+        "timestamp",
+        "type"
+      ]
+    },
+    "ThinkingEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "thinking"
+        },
+        "thinking": {
+          "type": "string",
+          "description": "Extended thinking content from the model"
+        }
+      },
+      "required": [
+        "seq",
+        "thinking",
+        "timestamp",
+        "type"
+      ]
+    },
+    "ToolUseEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "tool_use"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "input": {
+          "description": "Full tool input as received from the CLI"
+        }
+      },
+      "required": [
+        "id",
+        "input",
+        "name",
+        "seq",
+        "timestamp",
+        "type"
+      ]
+    },
+    "ToolResultEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "tool_result"
+        },
+        "toolUseId": {
+          "type": "string"
+        },
+        "isError": {
+          "type": "boolean"
+        },
+        "output": {
+          "type": "string",
+          "description": "Full combined text output from the tool result content blocks"
+        }
+      },
+      "required": [
+        "isError",
+        "output",
+        "seq",
+        "timestamp",
+        "toolUseId",
+        "type"
+      ]
+    },
+    "ProgressEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "progress"
+        },
+        "elapsed": {
+          "type": "number",
+          "description": "Seconds elapsed since process start"
+        }
+      },
+      "required": [
+        "elapsed",
+        "seq",
+        "timestamp",
+        "type"
+      ]
+    },
+    "ReadyEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "ready"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "CLI-assigned session ID — available at process start, before the done event"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model being used for this run"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of tools available to the agent"
+        }
+      },
+      "required": [
+        "seq",
+        "sessionId",
+        "timestamp",
+        "type"
+      ]
+    },
+    "RetryEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "retry"
+        },
+        "attempt": {
+          "type": "number",
+          "description": "Attempt number (1-based)"
+        },
+        "delayMs": {
+          "type": "number",
+          "description": "Delay before this retry in milliseconds"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message that triggered the retry"
+        }
+      },
+      "required": [
+        "attempt",
+        "seq",
+        "timestamp",
+        "type"
+      ]
+    },
+    "DoneEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "done"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "CLI-assigned session ID — store this and pass as sessionId on the next turn"
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "inputTokens": {
+              "type": "number"
+            },
+            "outputTokens": {
+              "type": "number"
+            },
+            "cacheReadInputTokens": {
+              "type": "number"
+            },
+            "cacheCreationInputTokens": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "inputTokens",
+            "outputTokens"
+          ]
+        },
+        "resultText": {
+          "type": "string",
+          "description": "Claude's own final summary/answer text (`result.result`) — distinct from the streamed `assistant` text blocks. Claude-only: Copilot's ACP `session/prompt` ack carries no equivalent field, and its final answer is already fully covered by the streamed `TextEvent`s, so this is left unset rather than populated from something that isn't actually there."
+        },
+        "isError": {
+          "type": "boolean",
+          "description": "Claude's `result.is_error` — whether the turn ended in an error state"
+        },
+        "durationMs": {
+          "type": "number",
+          "description": "Claude's `result.duration_ms` — wall-clock duration of the turn"
+        },
+        "totalCostUsd": {
+          "type": "number",
+          "description": "Claude's `result.total_cost_usd`"
+        },
+        "numTurns": {
+          "type": "number",
+          "description": "Claude's `result.num_turns`"
+        },
+        "stopReason": {
+          "type": "string",
+          "description": "Copilot ACP's `session/prompt` ack `result.stopReason` (e.g. `'end_turn'`). Copilot-only — Claude's `result` event has no equivalent field."
+        }
+      },
+      "required": [
+        "seq",
+        "sessionId",
+        "timestamp",
+        "type"
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "idle_timeout",
+        "max_timeout",
+        "nonzero_exit",
+        "rate_limit",
+        "spawn_error",
+        "internal_error",
+        "stale_session",
+        "parse_error",
+        "cli_error",
+        "aborted"
+      ]
+    },
+    "ErrorEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "error"
+        },
+        "code": {
+          "$ref": "#/definitions/ErrorCode"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "code",
+        "detail",
+        "seq",
+        "timestamp",
+        "type"
+      ]
+    },
+    "RawEvent": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "raw"
+        },
+        "rawType": {
+          "type": "string",
+          "description": "The 'type' field from the raw CLI event"
+        },
+        "rawSubtype": {
+          "type": "string",
+          "description": "The 'subtype' field if present"
+        },
+        "data": {
+          "description": "The full raw parsed JSON object — nothing is discarded"
+        }
+      },
+      "required": [
+        "data",
+        "rawType",
+        "seq",
+        "timestamp",
+        "type"
+      ]
+    },
+    "ClaudeEvent": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TextEvent"
+        },
+        {
+          "$ref": "#/definitions/ThinkingEvent"
+        },
+        {
+          "$ref": "#/definitions/ToolUseEvent"
+        },
+        {
+          "$ref": "#/definitions/ToolResultEvent"
+        },
+        {
+          "$ref": "#/definitions/ProgressEvent"
+        },
+        {
+          "$ref": "#/definitions/ReadyEvent"
+        },
+        {
+          "$ref": "#/definitions/RetryEvent"
+        },
+        {
+          "$ref": "#/definitions/DoneEvent"
+        },
+        {
+          "$ref": "#/definitions/ErrorEvent"
+        },
+        {
+          "$ref": "#/definitions/RawEvent"
+        }
+      ]
+    },
+    "parseCliLine": {
+      "$comment": "(line: string, nextSeq: number) => ClaudeEvent[]",
+      "type": "object",
+      "properties": {
+        "namedArgs": {
+          "type": "object",
+          "properties": {
+            "line": {
+              "type": "string"
+            },
+            "nextSeq": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "line",
+            "nextSeq"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "createCopilotAcpParser": {
+      "$comment": "() => (line: string, nextSeq: number) => ClaudeEvent[]"
+    },
+    "CliBackend": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "copilot"
+      ]
+    },
+    "ProcessOptions": {
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for the CLI subprocess"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Prompt delivered via stdin"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Agent or skill to invoke (e.g. 'dr-architect')"
+        },
+        "skipPermissions": {
+          "type": "boolean",
+          "description": "Pass --permission-mode bypassPermissions"
+        },
+        "mcpConfigPath": {
+          "type": "string",
+          "description": "Path to an MCP config JSON file (--mcp-config)"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "CLI-level session ID for conversation continuity.\n\nFirst message in a session: passed as --session-id (starts a new CLI session with a known, traceable ID).\n\nSubsequent messages: passed as --resume (continues the existing session).\n\nObtain the CLI-assigned ID from the 'done' event's sessionId field and store it in SessionManager via recordCliSessionId()."
+        },
+        "isFirstMessage": {
+          "type": "boolean",
+          "description": "Controls --session-id vs --resume. True for the first message. Default: true"
+        },
+        "idleTimeout": {
+          "type": "number",
+          "description": "Seconds of stdout silence before SIGTERM. Default: 300"
+        },
+        "maxTimeout": {
+          "type": "number",
+          "description": "Hard ceiling in seconds regardless of activity. Default: 3600"
+        },
+        "signal": {
+          "$ref": "#/definitions/global.AbortSignal",
+          "description": "AbortSignal that cancels the in-flight process.\n\nOn abort: the subprocess receives SIGTERM, then SIGKILL after 3 seconds if still alive. The generator yields ErrorEvent { code: 'aborted' } and stops. If the signal is already aborted when run() is called, the generator yields the error immediately without spawning."
+        },
+        "_watchdogIntervalMs": {
+          "type": "number"
+        },
+        "_sigkillDelayMs": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "cwd",
+        "prompt"
+      ]
+    },
+    "global.AbortSignal": {
+      "type": "object",
+      "properties": {}
+    },
+    "CliProcess": {
+      "type": "object",
+      "description": "Spawns an AI coding agent CLI (Claude Code or GitHub Copilot), delivers a prompt, and yields a normalized stream of ClaudeEvents.\n\nClaude Code: prompt via stdin; stream-json output parsed into typed events. Copilot: ACP protocol (copilot --acp --stdio); NDJSON JSON-RPC over   stdin/stdout; initialize → session/new → session/prompt handshake;   stateful parser produced by createCopilotAcpParser() tracks sessionUuid.   Resume uses the same handshake (plus a --resume=<uuid> CLI flag) — the   persisted session is loaded by session/new, which hands back a NEW   session UUID rather than reusing the old one.\n\nThe caller is responsible for routing events — this class has no opinion on whether they go to a WebSocket, Redis, SSE response, or an in-process queue."
+    },
+    "Session": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "App-defined key (e.g. CallSid, user ID, thread ID, project path)"
+        },
+        "cliSessionId": {
+          "type": "string",
+          "description": "The CLI-assigned session ID returned in the 'done' event. Undefined until the first successful turn completes. Pass this as sessionId in ProcessOptions on subsequent turns."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO 8601"
+        },
+        "lastActiveAt": {
+          "type": "string",
+          "description": "ISO 8601"
+        },
+        "isFirst": {
+          "type": "boolean",
+          "description": "True until recordCliSessionId() is called after the first successful turn. Controls whether CliProcess uses --session-id (first) or --resume (subsequent)."
+        }
+      },
+      "required": [
+        "key",
+        "createdAt",
+        "lastActiveAt",
+        "isFirst"
+      ]
+    },
+    "ISessionStore": {
+      "type": "object"
+    },
+    "byLastActive": {
+      "$comment": "(a: Session, b: Session) => number",
+      "type": "object",
+      "properties": {
+        "namedArgs": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Session"
+            },
+            "b": {
+              "$ref": "#/definitions/Session"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "createSessionStore": {
+      "$comment": "(persistPath?: string) => ISessionStore",
+      "type": "object",
+      "properties": {
+        "namedArgs": {
+          "type": "object",
+          "properties": {
+            "persistPath": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "SessionManagerOptions": {
+      "type": "object",
+      "properties": {
+        "persistPath": {
+          "type": "string",
+          "description": "Path to the sessions JSON file. Omit for in-memory only."
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Optional prefix applied to all keys — useful for multi-tenant apps"
+        }
+      }
+    },
+    "SessionManager": {
+      "type": "object",
+      "description": "Manages conversation sessions for one or more concurrent callers.\n\nThe containing application owns threading — SessionManager does not impose a conversation model. It provides helpers to start, continue, and inspect sessions while keeping the CLI-level session ID in sync."
+    },
+    "runWithRecovery": {
+      "$comment": "(\n  proc: CliProcess,\n  sessions: SessionManager,\n  key: string,\n  opts: ProcessOptions) => AsyncGenerator<ClaudeEvent>",
+      "type": "object",
+      "properties": {
+        "namedArgs": {
+          "type": "object",
+          "properties": {
+            "proc": {
+              "$ref": "#/definitions/CliProcess"
+            },
+            "sessions": {
+              "$ref": "#/definitions/SessionManager"
+            },
+            "key": {
+              "type": "string"
+            },
+            "opts": {
+              "$ref": "#/definitions/ProcessOptions"
+            }
+          },
+          "required": [
+            "proc",
+            "sessions",
+            "key",
+            "opts"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "WireProtocolVersion": {
+      "type": "number",
+      "const": 1,
+      "description": "Wire protocol version literal for schema validation."
+    }
+  }
+}
