@@ -3,15 +3,11 @@
 import asyncio
 import json
 import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
-
-# Add parent directory to path to import code_wrapper
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from code_wrapper import (
     CodeWrapper,

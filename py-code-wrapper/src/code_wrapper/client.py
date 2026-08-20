@@ -7,6 +7,7 @@ No protocol knowledge — only JSON deserialization and type discrimination.
 import asyncio
 import json
 import os
+import signal
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
@@ -52,15 +53,14 @@ class CodeWrapper:
     """Async client for code-wrapper binary.
 
     Example:
-        async with CodeWrapper() as client:
-            async for event in client.run(options):
-                print(event)
+        client = CodeWrapper()
+        async for event in client.run(options):
+            print(event)
     """
 
     def __init__(self):
         """Initialize the client."""
         self._process: Optional[asyncio.subprocess.Process] = None
-        self._kill_task: Optional[asyncio.Task] = None
 
     async def run(self, options: ClientOptions) -> AsyncGenerator[ClaudeEvent, None]:
         """Run the binary and yield typed events.
@@ -178,6 +178,11 @@ class CodeWrapper:
             # Clean up process
             if self._process:
                 await self._cleanup_process()
+                # Check for binary error exit codes
+                if self._process.returncode == 2:
+                    raise CodeWrapperBinaryError("Binary exited with code 2 (unhandled rejection)")
+                elif self._process.returncode == 3:
+                    raise CodeWrapperProtocolError("Binary exited with code 3 (internal error)")
 
     @staticmethod
     def _preexec_fn():
@@ -191,16 +196,25 @@ class CodeWrapper:
             return
 
         try:
-            # Try SIGTERM
+            # Try SIGTERM on the process group
             if self._process.returncode is None:
-                self._process.terminate()
+                try:
+                    pgid = os.getpgid(self._process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except ProcessLookupError:
+                    return
 
                 # Wait up to 3 seconds for graceful shutdown
                 try:
                     await asyncio.wait_for(self._process.wait(), timeout=3.0)
                 except asyncio.TimeoutError:
-                    # SIGTERM didn't work, escalate to SIGKILL
-                    self._process.kill()
+                    # SIGTERM didn't work, escalate to SIGKILL on the process group
+                    try:
+                        pgid = os.getpgid(self._process.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        return
+
                     try:
                         await asyncio.wait_for(self._process.wait(), timeout=1.0)
                     except asyncio.TimeoutError:

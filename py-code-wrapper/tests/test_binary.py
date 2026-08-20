@@ -1,14 +1,11 @@
 """Tests for code-wrapper binary resolution."""
 
 import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from code_wrapper._binary import (
     resolve_binary,

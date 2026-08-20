@@ -71,8 +71,8 @@ from ._binary import (
 )
 from .sessions import (
     Session,
+    ISessionStore,
     SessionManager,
-    SessionManager as ISessionStore,
     MemoryStore,
     FileStore,
     create_session_store,

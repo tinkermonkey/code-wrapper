@@ -9,7 +9,7 @@ Resolves the compiled binary in order:
 import os
 import sys
 import platform
-import subprocess
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -67,19 +67,11 @@ def _resolve_from_env() -> Optional[Path]:
 
 def _resolve_from_path() -> Optional[Path]:
     """Resolve 'code-wrapper' from PATH."""
-    try:
-        result = subprocess.run(
-            ["which", "code-wrapper"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0:
-            path = Path(result.stdout.strip())
-            if path.exists():
-                return path
-    except (FileNotFoundError, OSError):
-        pass
+    binary_path = shutil.which("code-wrapper")
+    if binary_path:
+        path = Path(binary_path)
+        if path.exists():
+            return path
     return None
 
 
