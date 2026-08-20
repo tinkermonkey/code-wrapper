@@ -40,6 +40,10 @@
     "TextEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -65,6 +69,10 @@
     "ThinkingEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -91,6 +99,10 @@
     "ToolUseEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -124,6 +136,10 @@
     "ToolResultEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -158,6 +174,10 @@
     "ProgressEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -184,6 +204,10 @@
     "ReadyEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -221,6 +245,10 @@
     "RetryEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -255,6 +283,10 @@
     "DoneEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -326,6 +358,10 @@
     "ErrorEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -373,6 +409,10 @@
     "RawEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"
@@ -422,6 +462,10 @@
     "BaseEvent": {
       "type": "object",
       "properties": {
+        "v": {
+          "type": "number",
+          "description": "Wire protocol version"
+        },
         "seq": {
           "type": "number",
           "description": "Monotonic across all events in a run — safe for replay and deduplication"

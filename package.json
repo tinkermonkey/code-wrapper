@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Reusable Node.js module for AI coding agent CLIs — process launch, event normalization, session management",
   "type": "module",
+  "bin": {
+    "code-wrapper": "./dist/cli/exec.js"
+  },
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
@@ -30,6 +33,7 @@
   ],
   "scripts": {
     "build": "npm run generate-schema && tsc",
+    "build:binary": "bun build --compile --target=bun-linux-x64 src/cli/exec.ts --outfile dist/code-wrapper-linux-x64 && bun build --compile --target=bun-linux-arm64 src/cli/exec.ts --outfile dist/code-wrapper-linux-arm64 && bun build --compile --target=bun-darwin-x64 src/cli/exec.ts --outfile dist/code-wrapper-darwin-x64 && bun build --compile --target=bun-darwin-arm64 src/cli/exec.ts --outfile dist/code-wrapper-darwin-arm64",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
