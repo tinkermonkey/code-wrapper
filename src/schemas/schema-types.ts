@@ -28,8 +28,3 @@ export type { Session } from '../sessions/types.js';
  * Wire protocol version literal for schema validation.
  */
 export type WireProtocolVersion = 1;
-
-/**
- * Re-export ClaudeEvent for schema generation.
- */
-export type { ClaudeEvent as ClaudeEventSchema } from '../events/types.js';

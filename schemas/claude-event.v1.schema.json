@@ -37,41 +37,6 @@
     }
   ],
   "definitions": {
-    "ClaudeEventType": {
-      "type": "string",
-      "enum": [
-        "text",
-        "thinking",
-        "tool_use",
-        "tool_result",
-        "progress",
-        "ready",
-        "retry",
-        "done",
-        "error",
-        "raw"
-      ]
-    },
-    "BaseEvent": {
-      "type": "object",
-      "properties": {
-        "seq": {
-          "type": "number",
-          "description": "Monotonic across all events in a run — safe for replay and deduplication"
-        },
-        "timestamp": {
-          "type": "number"
-        },
-        "type": {
-          "$ref": "#/definitions/ClaudeEventType"
-        }
-      },
-      "required": [
-        "seq",
-        "timestamp",
-        "type"
-      ]
-    },
     "TextEvent": {
       "type": "object",
       "properties": {
@@ -358,21 +323,6 @@
         "type"
       ]
     },
-    "ErrorCode": {
-      "type": "string",
-      "enum": [
-        "idle_timeout",
-        "max_timeout",
-        "nonzero_exit",
-        "rate_limit",
-        "spawn_error",
-        "internal_error",
-        "stale_session",
-        "parse_error",
-        "cli_error",
-        "aborted"
-      ]
-    },
     "ErrorEvent": {
       "type": "object",
       "properties": {
@@ -403,6 +353,21 @@
         "seq",
         "timestamp",
         "type"
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "idle_timeout",
+        "max_timeout",
+        "nonzero_exit",
+        "rate_limit",
+        "spawn_error",
+        "internal_error",
+        "stale_session",
+        "parse_error",
+        "cli_error",
+        "aborted"
       ]
     },
     "RawEvent": {
@@ -439,64 +404,40 @@
         "type"
       ]
     },
-    "ClaudeEvent": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/TextEvent"
-        },
-        {
-          "$ref": "#/definitions/ThinkingEvent"
-        },
-        {
-          "$ref": "#/definitions/ToolUseEvent"
-        },
-        {
-          "$ref": "#/definitions/ToolResultEvent"
-        },
-        {
-          "$ref": "#/definitions/ProgressEvent"
-        },
-        {
-          "$ref": "#/definitions/ReadyEvent"
-        },
-        {
-          "$ref": "#/definitions/RetryEvent"
-        },
-        {
-          "$ref": "#/definitions/DoneEvent"
-        },
-        {
-          "$ref": "#/definitions/ErrorEvent"
-        },
-        {
-          "$ref": "#/definitions/RawEvent"
-        }
+    "ClaudeEventType": {
+      "type": "string",
+      "enum": [
+        "text",
+        "thinking",
+        "tool_use",
+        "tool_result",
+        "progress",
+        "ready",
+        "retry",
+        "done",
+        "error",
+        "raw"
       ]
     },
-    "parseCliLine": {
-      "$comment": "(line: string, nextSeq: number) => ClaudeEvent[]",
+    "BaseEvent": {
       "type": "object",
       "properties": {
-        "namedArgs": {
-          "type": "object",
-          "properties": {
-            "line": {
-              "type": "string"
-            },
-            "nextSeq": {
-              "type": "number"
-            }
-          },
-          "required": [
-            "line",
-            "nextSeq"
-          ],
-          "additionalProperties": false
+        "seq": {
+          "type": "number",
+          "description": "Monotonic across all events in a run — safe for replay and deduplication"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/definitions/ClaudeEventType"
         }
-      }
-    },
-    "createCopilotAcpParser": {
-      "$comment": "() => (line: string, nextSeq: number) => ClaudeEvent[]"
+      },
+      "required": [
+        "seq",
+        "timestamp",
+        "type"
+      ]
     },
     "CliBackend": {
       "type": "string",
@@ -560,14 +501,6 @@
         "prompt"
       ]
     },
-    "global.AbortSignal": {
-      "type": "object",
-      "properties": {}
-    },
-    "CliProcess": {
-      "type": "object",
-      "description": "Spawns an AI coding agent CLI (Claude Code or GitHub Copilot), delivers a prompt, and yields a normalized stream of ClaudeEvents.\n\nClaude Code: prompt via stdin; stream-json output parsed into typed events. Copilot: ACP protocol (copilot --acp --stdio); NDJSON JSON-RPC over   stdin/stdout; initialize → session/new → session/prompt handshake;   stateful parser produced by createCopilotAcpParser() tracks sessionUuid.   Resume uses the same handshake (plus a --resume=<uuid> CLI flag) — the   persisted session is loaded by session/new, which hands back a NEW   session UUID rather than reusing the old one.\n\nThe caller is responsible for routing events — this class has no opinion on whether they go to a WebSocket, Redis, SSE response, or an in-process queue."
-    },
     "Session": {
       "type": "object",
       "properties": {
@@ -598,93 +531,6 @@
         "lastActiveAt",
         "isFirst"
       ]
-    },
-    "ISessionStore": {
-      "type": "object"
-    },
-    "byLastActive": {
-      "$comment": "(a: Session, b: Session) => number",
-      "type": "object",
-      "properties": {
-        "namedArgs": {
-          "type": "object",
-          "properties": {
-            "a": {
-              "$ref": "#/definitions/Session"
-            },
-            "b": {
-              "$ref": "#/definitions/Session"
-            }
-          },
-          "required": [
-            "a",
-            "b"
-          ],
-          "additionalProperties": false
-        }
-      }
-    },
-    "createSessionStore": {
-      "$comment": "(persistPath?: string) => ISessionStore",
-      "type": "object",
-      "properties": {
-        "namedArgs": {
-          "type": "object",
-          "properties": {
-            "persistPath": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        }
-      }
-    },
-    "SessionManagerOptions": {
-      "type": "object",
-      "properties": {
-        "persistPath": {
-          "type": "string",
-          "description": "Path to the sessions JSON file. Omit for in-memory only."
-        },
-        "namespace": {
-          "type": "string",
-          "description": "Optional prefix applied to all keys — useful for multi-tenant apps"
-        }
-      }
-    },
-    "SessionManager": {
-      "type": "object",
-      "description": "Manages conversation sessions for one or more concurrent callers.\n\nThe containing application owns threading — SessionManager does not impose a conversation model. It provides helpers to start, continue, and inspect sessions while keeping the CLI-level session ID in sync."
-    },
-    "runWithRecovery": {
-      "$comment": "(\n  proc: CliProcess,\n  sessions: SessionManager,\n  key: string,\n  opts: ProcessOptions) => AsyncGenerator<ClaudeEvent>",
-      "type": "object",
-      "properties": {
-        "namedArgs": {
-          "type": "object",
-          "properties": {
-            "proc": {
-              "$ref": "#/definitions/CliProcess"
-            },
-            "sessions": {
-              "$ref": "#/definitions/SessionManager"
-            },
-            "key": {
-              "type": "string"
-            },
-            "opts": {
-              "$ref": "#/definitions/ProcessOptions"
-            }
-          },
-          "required": [
-            "proc",
-            "sessions",
-            "key",
-            "opts"
-          ],
-          "additionalProperties": false
-        }
-      }
     },
     "WireProtocolVersion": {
       "type": "number",

@@ -17,14 +17,27 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, '..');
 
-// Generate schema for all exported types
+// Generate schema for contract types only (via the schema-types entry point)
 const generator = createGenerator({
   tsconfig: path.join(rootDir, 'tsconfig.json'),
+  path: path.join(rootDir, 'src/schemas/schema-types.ts'),
   skipTypeCheck: false,
   additionalProperties: true,
+  functions: 'hide',
 });
 
 const schema = generator.createSchema();
+
+// Remove the auto-generated ClaudeEvent definition (with anyOf) to avoid duplication
+// The top-level oneOf below is the single source of truth for the discriminated union
+const definitions = { ...schema.definitions };
+delete definitions.ClaudeEvent;
+
+// Remove the redundant re-export alias
+delete definitions.ClaudeEventSchema;
+
+// Remove built-in/global type leaks (e.g., AbortSignal from ProcessOptions)
+delete definitions['global.AbortSignal'];
 
 // Enhance schema with metadata
 const versionedSchema = {
@@ -48,7 +61,7 @@ const versionedSchema = {
     { $ref: '#/definitions/ErrorEvent' },
     { $ref: '#/definitions/RawEvent' },
   ],
-  definitions: schema.definitions || {},
+  definitions,
 };
 
 // Write schema to file
