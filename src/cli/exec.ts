@@ -180,22 +180,6 @@ async function main(): Promise<void> {
   }
 }
 
-// Set up process group management for clean signal handling
-// On Unix systems, spawn CliProcess with detached: true to create a separate process group
-// This ensures SIGKILL to the binary doesn't orphan the child CLI process
-if (process.platform !== 'win32') {
-  process.on('SIGTERM', () => {
-    try {
-      // Send SIGTERM to the entire process group of this binary
-      // The child CLI process will have its own process group due to detached: true in spawn()
-      // so this only affects this binary and its direct descendants
-      process.kill(-process.pid, 'SIGTERM');
-    } catch {
-      // Process group may have already exited
-    }
-    process.exit(143);
-  });
-}
 
 main().catch(() => {
   process.exit(2);

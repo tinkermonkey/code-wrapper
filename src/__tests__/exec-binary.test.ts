@@ -134,9 +134,9 @@ describe('code-wrapper exec binary', () => {
       expect(Array.isArray(lines)).toBe(true);
       const seqs = lines.map(line => JSON.parse(line).seq);
 
-      // Verify seq is monotonically increasing
+      // Verify seq is strictly increasing
       for (let i = 1; i < seqs.length; i++) {
-        expect(seqs[i]).toBeGreaterThanOrEqual(seqs[i - 1]);
+        expect(seqs[i]).toBeGreaterThan(seqs[i - 1]);
       }
     });
 

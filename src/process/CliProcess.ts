@@ -87,12 +87,6 @@ export class CliProcess {
       env,
     };
 
-    // On Unix systems, detach the child process so it creates its own process group
-    // This prevents SIGKILL to the parent binary from orphaning the CLI process
-    if (process.platform !== 'win32') {
-      spawnOpts.detached = true;
-    }
-
     const proc = spawn(
       this.backend === 'claude' ? 'claude' : 'copilot',
       args,
