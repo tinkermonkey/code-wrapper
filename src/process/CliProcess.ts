@@ -81,10 +81,22 @@ export class CliProcess {
       delete env['CLAUDE_CODE_OAUTH_TOKEN'];
     }
 
+    const spawnOpts: any = {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env,
+    };
+
+    // On Unix systems, detach the child process so it creates its own process group
+    // This prevents SIGKILL to the parent binary from orphaning the CLI process
+    if (process.platform !== 'win32') {
+      spawnOpts.detached = true;
+    }
+
     const proc = spawn(
       this.backend === 'claude' ? 'claude' : 'copilot',
       args,
-      { cwd, stdio: ['pipe', 'pipe', 'pipe'], env },
+      spawnOpts,
     );
 
     this.activeProc = proc;

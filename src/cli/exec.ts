@@ -112,6 +112,8 @@ function parseArgs(argv: string[]): ExecOptions {
 }
 
 async function main(): Promise<void> {
+  let seq = 0;
+
   try {
     const execOpts = parseArgs(process.argv);
 
@@ -140,17 +142,9 @@ async function main(): Promise<void> {
       ? runWithRecovery(proc, sessionManager, execOpts.sessionId || 'default', processOpts)
       : proc.run(processOpts);
 
-    let seq = 0;
-    const startTime = Date.now();
-    let lastEventTime = startTime;
-
     for await (const event of eventGenerator) {
       // Ensure seq is monotonically increasing
-      if (event.seq < seq) {
-        seq = event.seq;
-      } else {
-        seq = Math.max(seq + 1, event.seq);
-      }
+      seq = Math.max(seq + 1, event.seq);
 
       // Add version field to the event and output as NDJSON
       const wireEvent = {
@@ -161,7 +155,6 @@ async function main(): Promise<void> {
 
       // Output as NDJSON line
       console.log(JSON.stringify(wireEvent));
-      lastEventTime = Date.now();
 
       // Record session ID if this is a done event
       if (event.type === 'done' && sessionManager && event.sessionId) {
@@ -175,7 +168,7 @@ async function main(): Promise<void> {
     // Handle unexpected errors
     const errorEvent = {
       v: 1,
-      seq: 0,
+      seq: seq + 1,
       timestamp: Date.now(),
       type: 'error',
       code: 'internal_error',
@@ -188,18 +181,14 @@ async function main(): Promise<void> {
 }
 
 // Set up process group management for clean signal handling
-if (process.platform !== 'win32') {
-  try {
-    (process as any).setpgid?.(0, 0);
-  } catch {
-    // Some environments don't support setpgid; continue anyway
-  }
-}
-
-// Handle SIGTERM by forwarding to process group
+// On Unix systems, spawn CliProcess with detached: true to create a separate process group
+// This ensures SIGKILL to the binary doesn't orphan the child CLI process
 if (process.platform !== 'win32') {
   process.on('SIGTERM', () => {
     try {
+      // Send SIGTERM to the entire process group of this binary
+      // The child CLI process will have its own process group due to detached: true in spawn()
+      // so this only affects this binary and its direct descendants
       process.kill(-process.pid, 'SIGTERM');
     } catch {
       // Process group may have already exited

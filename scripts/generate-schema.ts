@@ -39,6 +39,15 @@ delete definitions.ClaudeEventSchema;
 // Remove built-in/global type leaks (e.g., AbortSignal from ProcessOptions)
 delete definitions['global.AbortSignal'];
 
+// Make v required in all event types for wire protocol compliance
+Object.values(definitions).forEach((def: any) => {
+  if (def.required && Array.isArray(def.required) && def.properties?.v) {
+    if (!def.required.includes('v')) {
+      def.required.push('v');
+    }
+  }
+});
+
 // Enhance schema with metadata
 const versionedSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
@@ -47,8 +56,8 @@ const versionedSchema = {
   description:
     'Wire protocol event format for code-wrapper binary NDJSON output. ' +
     'Each line in the NDJSON stream is a JSON object conforming to one of the ClaudeEvent discriminated union types. ' +
-    'The top-level discriminator is the "type" field. Wire protocol version is indicated by the "v" field (currently 1).',
-  version: '1',
+    'The top-level discriminator is the "type" field. Wire protocol version is indicated by the "v" field (currently 1). ' +
+    'All events MUST include the "v" field set to 1 for this schema version.',
   oneOf: [
     { $ref: '#/definitions/TextEvent' },
     { $ref: '#/definitions/ThinkingEvent' },

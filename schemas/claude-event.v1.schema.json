@@ -2,8 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://tinkermonkey.github.io/code-wrapper/claude-event.v1.schema.json",
   "title": "Claude Event Schema v1",
-  "description": "Wire protocol event format for code-wrapper binary NDJSON output. Each line in the NDJSON stream is a JSON object conforming to one of the ClaudeEvent discriminated union types. The top-level discriminator is the \"type\" field. Wire protocol version is indicated by the \"v\" field (currently 1).",
-  "version": "1",
+  "description": "Wire protocol event format for code-wrapper binary NDJSON output. Each line in the NDJSON stream is a JSON object conforming to one of the ClaudeEvent discriminated union types. The top-level discriminator is the \"type\" field. Wire protocol version is indicated by the \"v\" field (currently 1). All events MUST include the \"v\" field set to 1 for this schema version.",
   "oneOf": [
     {
       "$ref": "#/definitions/TextEvent"
@@ -42,7 +41,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -63,7 +62,8 @@
         "seq",
         "text",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ThinkingEvent": {
@@ -71,7 +71,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -93,7 +93,8 @@
         "seq",
         "thinking",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ToolUseEvent": {
@@ -101,7 +102,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -130,7 +131,8 @@
         "name",
         "seq",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ToolResultEvent": {
@@ -138,7 +140,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -168,7 +170,8 @@
         "seq",
         "timestamp",
         "toolUseId",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ProgressEvent": {
@@ -176,7 +179,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -198,7 +201,8 @@
         "elapsed",
         "seq",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ReadyEvent": {
@@ -206,7 +210,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -239,7 +243,8 @@
         "seq",
         "sessionId",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "RetryEvent": {
@@ -247,7 +252,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -277,7 +282,8 @@
         "attempt",
         "seq",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "DoneEvent": {
@@ -285,7 +291,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -352,7 +358,8 @@
         "seq",
         "sessionId",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ErrorEvent": {
@@ -360,7 +367,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -388,7 +395,8 @@
         "detail",
         "seq",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ErrorCode": {
@@ -411,7 +419,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -441,7 +449,8 @@
         "rawType",
         "seq",
         "timestamp",
-        "type"
+        "type",
+        "v"
       ]
     },
     "ClaudeEventType": {
@@ -464,7 +473,7 @@
       "properties": {
         "v": {
           "type": "number",
-          "description": "Wire protocol version"
+          "description": "Wire protocol version — added by exec binary on output"
         },
         "seq": {
           "type": "number",
@@ -480,100 +489,8 @@
       "required": [
         "seq",
         "timestamp",
-        "type"
-      ]
-    },
-    "CliBackend": {
-      "type": "string",
-      "enum": [
-        "claude",
-        "copilot"
-      ]
-    },
-    "ProcessOptions": {
-      "type": "object",
-      "properties": {
-        "cwd": {
-          "type": "string",
-          "description": "Working directory for the CLI subprocess"
-        },
-        "prompt": {
-          "type": "string",
-          "description": "Prompt delivered via stdin"
-        },
-        "agent": {
-          "type": "string",
-          "description": "Agent or skill to invoke (e.g. 'dr-architect')"
-        },
-        "skipPermissions": {
-          "type": "boolean",
-          "description": "Pass --permission-mode bypassPermissions"
-        },
-        "mcpConfigPath": {
-          "type": "string",
-          "description": "Path to an MCP config JSON file (--mcp-config)"
-        },
-        "sessionId": {
-          "type": "string",
-          "description": "CLI-level session ID for conversation continuity.\n\nFirst message in a session: passed as --session-id (starts a new CLI session with a known, traceable ID).\n\nSubsequent messages: passed as --resume (continues the existing session).\n\nObtain the CLI-assigned ID from the 'done' event's sessionId field and store it in SessionManager via recordCliSessionId()."
-        },
-        "isFirstMessage": {
-          "type": "boolean",
-          "description": "Controls --session-id vs --resume. True for the first message. Default: true"
-        },
-        "idleTimeout": {
-          "type": "number",
-          "description": "Seconds of stdout silence before SIGTERM. Default: 300"
-        },
-        "maxTimeout": {
-          "type": "number",
-          "description": "Hard ceiling in seconds regardless of activity. Default: 3600"
-        },
-        "signal": {
-          "$ref": "#/definitions/global.AbortSignal",
-          "description": "AbortSignal that cancels the in-flight process.\n\nOn abort: the subprocess receives SIGTERM, then SIGKILL after 3 seconds if still alive. The generator yields ErrorEvent { code: 'aborted' } and stops. If the signal is already aborted when run() is called, the generator yields the error immediately without spawning."
-        },
-        "_watchdogIntervalMs": {
-          "type": "number"
-        },
-        "_sigkillDelayMs": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "cwd",
-        "prompt"
-      ]
-    },
-    "Session": {
-      "type": "object",
-      "properties": {
-        "key": {
-          "type": "string",
-          "description": "App-defined key (e.g. CallSid, user ID, thread ID, project path)"
-        },
-        "cliSessionId": {
-          "type": "string",
-          "description": "The CLI-assigned session ID returned in the 'done' event. Undefined until the first successful turn completes. Pass this as sessionId in ProcessOptions on subsequent turns."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "ISO 8601"
-        },
-        "lastActiveAt": {
-          "type": "string",
-          "description": "ISO 8601"
-        },
-        "isFirst": {
-          "type": "boolean",
-          "description": "True until recordCliSessionId() is called after the first successful turn. Controls whether CliProcess uses --session-id (first) or --resume (subsequent)."
-        }
-      },
-      "required": [
-        "key",
-        "createdAt",
-        "lastActiveAt",
-        "isFirst"
+        "type",
+        "v"
       ]
     },
     "WireProtocolVersion": {

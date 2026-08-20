@@ -11,7 +11,7 @@ export type ClaudeEventType =
   | 'raw';
 
 export interface BaseEvent {
-  /** Wire protocol version */
+  /** Wire protocol version — added by exec binary on output */
   v?: number;
   /** Monotonic across all events in a run — safe for replay and deduplication */
   seq: number;

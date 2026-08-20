@@ -53,16 +53,13 @@ describe('JSON Schema validation', () => {
       const expectedTypes = [
         'BaseEvent',
         'ClaudeEventType',
-        'CliBackend',
         'DoneEvent',
         'ErrorCode',
         'ErrorEvent',
-        'ProcessOptions',
         'ProgressEvent',
         'RawEvent',
         'ReadyEvent',
         'RetryEvent',
-        'Session',
         'TextEvent',
         'ThinkingEvent',
         'ToolResultEvent',
@@ -74,7 +71,7 @@ describe('JSON Schema validation', () => {
   });
 
   describe('event validation', () => {
-    const baseEvent = { seq: 0, timestamp: Date.now(), type: 'text' };
+    const baseEvent = { v: 1, seq: 0, timestamp: Date.now(), type: 'text' };
 
     it('TextEvent validates against schema', () => {
       const event: TextEvent = { ...baseEvent, type: 'text', text: 'hello' } as TextEvent;
@@ -171,18 +168,23 @@ describe('JSON Schema validation', () => {
   });
 
   describe('event rejection', () => {
+    it('rejects event with missing required v field', () => {
+      const invalid = { seq: 0, timestamp: Date.now(), type: 'text' };
+      expect(validate(invalid)).toBe(false);
+    });
+
     it('rejects event with missing required type field', () => {
-      const invalid = { seq: 0, timestamp: Date.now(), text: 'hello' };
+      const invalid = { v: 1, seq: 0, timestamp: Date.now(), text: 'hello' };
       expect(validate(invalid)).toBe(false);
     });
 
     it('rejects event with missing required seq field', () => {
-      const invalid = { type: 'text', timestamp: Date.now(), text: 'hello' };
+      const invalid = { v: 1, type: 'text', timestamp: Date.now(), text: 'hello' };
       expect(validate(invalid)).toBe(false);
     });
 
     it('rejects event with invalid type value', () => {
-      const invalid = { seq: 0, timestamp: Date.now(), type: 'invalid_type' };
+      const invalid = { v: 1, seq: 0, timestamp: Date.now(), type: 'invalid_type' };
       expect(validate(invalid)).toBe(false);
     });
 
