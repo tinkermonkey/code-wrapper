@@ -23,10 +23,15 @@ FROM switchyard-orchestrator:latest
 USER root
 
 # ============================================================================
-# Stage 2: No Additional Runtimes Needed
+# Stage 2: Install Additional System Dependencies
 # ============================================================================
 # The base image already provides Node.js 22 and npm, which satisfies
 # the project's engines requirement of node >= 20.
+# dbus-x11 provides dbus-launch, required by gh CLI for D-Bus authentication.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends dbus-x11 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # ============================================================================
 # Stage 3: Pre-install Dependencies

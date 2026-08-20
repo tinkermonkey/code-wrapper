@@ -18,7 +18,7 @@ beforeAll(() => {
 });
 
 function validateEventAgainstSchema(event: any): boolean {
-  const ajv = new Ajv();
+  const ajv = new (Ajv as any)();
   const validate = ajv.compile(schema);
   const valid = validate(event);
   if (!valid) {
