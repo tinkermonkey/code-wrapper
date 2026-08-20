@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import Ajv from 'ajv';
+import { Ajv } from 'ajv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
