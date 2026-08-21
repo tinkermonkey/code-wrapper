@@ -42,38 +42,53 @@ function parseArgs(argv: string[]): ExecOptions {
 
     switch (arg) {
       case '--backend':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.backend = args[++i] as CliBackend;
         break;
       case '--cwd':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.cwd = args[++i];
         break;
       case '--prompt':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         prompt = args[++i];
         break;
       case '--session-id':
       case '--resume':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.sessionId = args[++i];
         opts.isFirstMessage = arg === '--session-id';
         break;
       case '--is-first-message':
         opts.isFirstMessage = true;
         break;
-      case '--idle-timeout':
-        opts.idleTimeout = parseInt(args[++i], 10);
+      case '--idle-timeout': {
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
+        const value = parseInt(args[++i], 10);
+        if (isNaN(value)) throw new Error(`${arg} must be a valid number`);
+        opts.idleTimeout = value;
         break;
-      case '--max-timeout':
-        opts.maxTimeout = parseInt(args[++i], 10);
+      }
+      case '--max-timeout': {
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
+        const value = parseInt(args[++i], 10);
+        if (isNaN(value)) throw new Error(`${arg} must be a valid number`);
+        opts.maxTimeout = value;
         break;
+      }
       case '--skip-permissions':
         opts.skipPermissions = true;
         break;
       case '--agent':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.agent = args[++i];
         break;
       case '--mcp-config':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.mcpConfigPath = args[++i];
         break;
       case '--session-dir':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.sessionDir = args[++i];
         break;
       case '--recover-stale-session':
@@ -86,7 +101,8 @@ function parseArgs(argv: string[]): ExecOptions {
   if (!prompt) {
     try {
       prompt = readFileSync(0, 'utf-8');
-    } catch {
+    } catch (err) {
+      console.error(`Warning: Failed to read prompt from stdin: ${err instanceof Error ? err.message : String(err)}`);
       prompt = '';
     }
   }
@@ -113,6 +129,15 @@ function parseArgs(argv: string[]): ExecOptions {
 
 async function main(): Promise<void> {
   let seq = 0;
+  let errorEventEmitted = false;
+
+  // Establish process group so the binary and spawned CLI form an isolated group.
+  // This allows clean shutdown: if the binary is killed, the entire group is reaped.
+  try {
+    (process as any).setpgid?.(0, 0);
+  } catch {
+    // setpgid may fail on some platforms or shells; continue gracefully.
+  }
 
   try {
     const execOpts = parseArgs(process.argv);
@@ -146,6 +171,11 @@ async function main(): Promise<void> {
       // Ensure seq is monotonically increasing
       seq = Math.max(seq + 1, event.seq);
 
+      // Track if an error event was emitted for exit code determination
+      if (event.type === 'error') {
+        errorEventEmitted = true;
+      }
+
       // Add version field to the event and output as NDJSON
       const wireEvent = {
         v: 1,
@@ -162,9 +192,16 @@ async function main(): Promise<void> {
       }
     }
 
-    // Exit with code 0 for clean completion
-    process.exit(0);
+    // Exit with code 1 if an error event was emitted, 0 for clean completion
+    process.exit(errorEventEmitted ? 1 : 0);
   } catch (err) {
+    // Log the error to stderr for diagnostics
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`Binary error: ${errorMsg}`);
+    if (err instanceof Error && err.stack) {
+      console.error(err.stack);
+    }
+
     // Handle unexpected errors
     const errorEvent = {
       v: 1,
@@ -172,7 +209,7 @@ async function main(): Promise<void> {
       timestamp: Date.now(),
       type: 'error',
       code: 'internal_error',
-      detail: err instanceof Error ? err.message : String(err),
+      detail: errorMsg,
     } satisfies ClaudeEvent;
 
     console.log(JSON.stringify(errorEvent));
@@ -181,6 +218,12 @@ async function main(): Promise<void> {
 }
 
 
-main().catch(() => {
+main().catch(err => {
+  // Log error information before exiting with code 2
+  const errorMsg = err instanceof Error ? err.message : String(err);
+  console.error(`Fatal error in main: ${errorMsg}`);
+  if (err instanceof Error && err.stack) {
+    console.error(err.stack);
+  }
   process.exit(2);
 });

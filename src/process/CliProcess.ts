@@ -85,6 +85,7 @@ export class CliProcess {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
+      detached: true,
     };
 
     const proc = spawn(
@@ -201,13 +202,14 @@ export class CliProcess {
 
     let sigkillTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // AbortSignal: kill the process and mark the reason so the correct
+    // AbortSignal: kill the process group and mark the reason so the correct
     // ErrorEvent is yielded after the consume loop drains.
+    // Using -proc.pid kills the entire process group on Unix.
     const abortHandler = (): void => {
       if (killedBy) return;
       killedBy = 'aborted';
-      proc.kill('SIGTERM');
-      sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
+      process.kill(-proc.pid!, 'SIGTERM');
+      sigkillTimer = setTimeout(() => process.kill(-proc.pid!, 'SIGKILL'), _sigkillDelayMs);
     };
     if (signal) {
       signal.addEventListener('abort', abortHandler);
@@ -219,6 +221,7 @@ export class CliProcess {
 
     // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
     // On timeout: SIGTERM first, SIGKILL after _sigkillDelayMs if still alive.
+    // Using -proc.pid kills the entire process group on Unix.
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (killedBy) return;
@@ -228,12 +231,12 @@ export class CliProcess {
       } satisfies ProgressEvent);
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
-        proc.kill('SIGTERM');
-        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
+        process.kill(-proc.pid!, 'SIGTERM');
+        sigkillTimer = setTimeout(() => process.kill(-proc.pid!, 'SIGKILL'), _sigkillDelayMs);
       } else if (now - startedAt > maxTimeout * 1_000) {
         killedBy = 'max';
-        proc.kill('SIGTERM');
-        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
+        process.kill(-proc.pid!, 'SIGTERM');
+        sigkillTimer = setTimeout(() => process.kill(-proc.pid!, 'SIGKILL'), _sigkillDelayMs);
       }
     }, _watchdogIntervalMs);
 
@@ -342,13 +345,14 @@ export class CliProcess {
     }
   }
 
-  /** SIGTERM the active subprocess, escalating to SIGKILL after gracePeriodMs */
+  /** SIGTERM the active subprocess process group, escalating to SIGKILL after gracePeriodMs */
   async kill(gracePeriodMs = 3_000): Promise<void> {
     const proc = this.activeProc;
     if (!proc) return;
-    proc.kill('SIGTERM');
+    // Kill the process group (using -proc.pid on Unix) to ensure all children are terminated
+    process.kill(-proc.pid!, 'SIGTERM');
     await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { proc.kill('SIGKILL'); resolve(); }, gracePeriodMs);
+      const timer = setTimeout(() => { process.kill(-proc.pid!, 'SIGKILL'); resolve(); }, gracePeriodMs);
       proc.once('close', () => { clearTimeout(timer); resolve(); });
     });
     this.activeProc = null;
