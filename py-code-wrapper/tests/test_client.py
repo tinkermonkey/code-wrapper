@@ -1,24 +1,15 @@
 """Tests for the Python code-wrapper client."""
 
-import asyncio
 import json
 import os
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from code_wrapper import (
-    CodeWrapper,
     ClientOptions,
+    CodeWrapper,
     CodeWrapperProtocolError,
-    CodeWrapperBinaryError,
-    TextEvent,
-    ReadyEvent,
-    DoneEvent,
-    ProgressEvent,
-    ErrorEvent,
 )
 
 

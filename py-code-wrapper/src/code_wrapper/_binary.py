@@ -5,19 +5,17 @@ Resolves the compiled binary in order:
 2. 'code-wrapper' in PATH
 3. Package-bundled binary for the current platform
 """
+from __future__ import annotations
 
 import os
-import sys
 import platform
 import shutil
 from pathlib import Path
-from typing import Optional
 
 
 class CodeWrapperBinaryError(Exception):
     """Raised when the code-wrapper binary cannot be found or executed."""
 
-    pass
 
 
 def _get_platform_binary_name() -> str:
@@ -51,7 +49,7 @@ def _get_platform_binary_name() -> str:
     return f"code-wrapper-{os_name}-{arch}"
 
 
-def _resolve_from_env() -> Optional[Path]:
+def _resolve_from_env() -> Path | None:
     """Resolve binary from CODE_WRAPPER_BINARY environment variable."""
     binary_path = os.environ.get("CODE_WRAPPER_BINARY")
     if binary_path:
@@ -64,7 +62,7 @@ def _resolve_from_env() -> Optional[Path]:
     return None
 
 
-def _resolve_from_path() -> Optional[Path]:
+def _resolve_from_path() -> Path | None:
     """Resolve 'code-wrapper' from PATH."""
     binary_path = shutil.which("code-wrapper")
     if binary_path:
@@ -74,7 +72,7 @@ def _resolve_from_path() -> Optional[Path]:
     return None
 
 
-def _resolve_bundled() -> Optional[Path]:
+def _resolve_bundled() -> Path | None:
     """Resolve platform-specific binary bundled in the package."""
     binary_name = _get_platform_binary_name()
     # Package data is in code_wrapper/binaries/ relative to this module

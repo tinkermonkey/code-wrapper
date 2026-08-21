@@ -4,21 +4,20 @@ Spawns the binary and exposes an async generator yielding typed ClaudeEvent obje
 No protocol knowledge — only JSON deserialization and type discrimination.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os
 import signal
-from pathlib import Path
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
 
-from ._binary import resolve_binary, CodeWrapperBinaryError
-from .models import ClaudeEvent, deserialize_event, ErrorEvent
+from ._binary import CodeWrapperBinaryError, resolve_binary
+from .models import ClaudeEvent, ErrorEvent, deserialize_event
 
 
 class CodeWrapperProtocolError(Exception):
     """Raised when wire protocol version mismatch is detected."""
-
-    pass
 
 
 class ClientOptions:
@@ -28,13 +27,13 @@ class ClientOptions:
         self,
         cwd: str,
         prompt: str,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
         is_first_message: bool = True,
         idle_timeout: int = 300,
         max_timeout: int = 3600,
         skip_permissions: bool = False,
-        agent: Optional[str] = None,
-        mcp_config_path: Optional[str] = None,
+        agent: str | None = None,
+        mcp_config_path: str | None = None,
         backend: str = "claude",
     ):
         self.cwd = cwd
@@ -60,7 +59,7 @@ class CodeWrapper:
 
     def __init__(self):
         """Initialize the client."""
-        self._process: Optional[asyncio.subprocess.Process] = None
+        self._process: asyncio.subprocess.Process | None = None
 
     async def run(self, options: ClientOptions) -> AsyncGenerator[ClaudeEvent, None]:
         """Run the binary and yield typed events.
@@ -164,7 +163,7 @@ class CodeWrapper:
                     try:
                         event = deserialize_event(data)
                         yield event
-                    except Exception as e:
+                    except ValueError as e:
                         # Yield parse error but continue
                         yield ErrorEvent(
                             v=1,
@@ -235,7 +234,7 @@ class CodeWrapper:
                 if not line:
                     break
                 yield line.decode("utf-8", errors="replace")
-            except Exception:
+            except OSError:
                 break
 
 

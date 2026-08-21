@@ -43,70 +43,70 @@ For session resumption:
 __version__ = "0.1.0"
 
 # Public API
+from ._binary import (
+    CodeWrapperBinaryError,
+    resolve_binary,
+)
+from .client import (
+    ClientOptions,
+    CodeWrapper,
+    CodeWrapperProtocolError,
+    run,
+)
 from .models import (
-    ClaudeEvent,
     BaseEvent,
-    TextEvent,
-    ThinkingEvent,
-    ToolUseEvent,
-    ToolResultEvent,
-    ProgressEvent,
-    ReadyEvent,
-    RetryEvent,
+    ClaudeEvent,
     DoneEvent,
     ErrorEvent,
+    ProgressEvent,
     RawEvent,
+    ReadyEvent,
+    RetryEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
     Usage,
     deserialize_event,
 )
-from .client import (
-    CodeWrapper,
-    ClientOptions,
-    run,
-    CodeWrapperProtocolError,
-)
-from ._binary import (
-    resolve_binary,
-    CodeWrapperBinaryError,
-)
 from .sessions import (
-    Session,
-    ISessionStore,
-    SessionManager,
-    MemoryStore,
     FileStore,
+    ISessionStore,
+    MemoryStore,
+    Session,
+    SessionManager,
     create_session_store,
 )
 
 __all__ = [
+    "BaseEvent",
     # Models
     "ClaudeEvent",
-    "BaseEvent",
-    "TextEvent",
-    "ThinkingEvent",
-    "ToolUseEvent",
-    "ToolResultEvent",
-    "ProgressEvent",
-    "ReadyEvent",
-    "RetryEvent",
-    "DoneEvent",
-    "ErrorEvent",
-    "RawEvent",
-    "Usage",
-    "deserialize_event",
+    "ClientOptions",
     # Client
     "CodeWrapper",
-    "ClientOptions",
-    "run",
-    "CodeWrapperProtocolError",
-    # Binary
-    "resolve_binary",
     "CodeWrapperBinaryError",
+    "CodeWrapperProtocolError",
+    "DoneEvent",
+    "ErrorEvent",
+    "FileStore",
+    "ISessionStore",
+    "MemoryStore",
+    "ProgressEvent",
+    "RawEvent",
+    "ReadyEvent",
+    "RetryEvent",
     # Sessions
     "Session",
     "SessionManager",
-    "ISessionStore",
-    "MemoryStore",
-    "FileStore",
+    "TextEvent",
+    "ThinkingEvent",
+    "ToolResultEvent",
+    "ToolUseEvent",
+    "Usage",
     "create_session_store",
+    "deserialize_event",
+    # Binary
+    "resolve_binary",
+    "run",
 ]

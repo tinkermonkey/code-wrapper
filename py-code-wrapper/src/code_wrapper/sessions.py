@@ -7,11 +7,9 @@ Delegates to the binary's session manager — Python does not re-implement persi
 from __future__ import annotations
 
 import json
-import os
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
-from dataclasses import dataclass, asdict
 
 
 @dataclass
@@ -27,7 +25,7 @@ class Session:
     """
 
     key: str
-    cliSessionId: Optional[str]
+    cliSessionId: str | None
     createdAt: str
     lastActiveAt: str
     isFirst: bool
@@ -36,7 +34,7 @@ class Session:
 class ISessionStore:
     """Abstract session storage interface."""
 
-    def get(self, key: str) -> Optional[Session]:
+    def get(self, key: str) -> Session | None:
         """Get a session by key."""
         raise NotImplementedError
 
@@ -59,7 +57,7 @@ class MemoryStore(ISessionStore):
     def __init__(self):
         self._sessions: dict[str, Session] = {}
 
-    def get(self, key: str) -> Optional[Session]:
+    def get(self, key: str) -> Session | None:
         return self._sessions.get(key)
 
     def set(self, session: Session) -> None:
@@ -108,12 +106,12 @@ class FileStore(ISessionStore):
 
             # Atomic rename
             tmp_path.replace(self.path)
-        except (OSError, IOError) as e:
+        except OSError as e:
             if tmp_path.exists():
                 tmp_path.unlink()
             raise RuntimeError(f"Failed to flush session store: {e}") from e
 
-    def get(self, key: str) -> Optional[Session]:
+    def get(self, key: str) -> Session | None:
         return self._sessions.get(key)
 
     def set(self, session: Session) -> None:
@@ -129,7 +127,7 @@ class FileStore(ISessionStore):
         return sorted(self._sessions.values(), key=lambda s: s.lastActiveAt, reverse=True)
 
 
-def create_session_store(persist_path: Optional[str] = None) -> ISessionStore:
+def create_session_store(persist_path: str | None = None) -> ISessionStore:
     """Create a session store (file-based or in-memory).
 
     Args:
@@ -153,8 +151,8 @@ class SessionManager:
 
     def __init__(
         self,
-        persist_path: Optional[str] = None,
-        namespace: Optional[str] = None,
+        persist_path: str | None = None,
+        namespace: str | None = None,
     ):
         """Initialize the session manager.
 
@@ -191,7 +189,7 @@ class SessionManager:
         self._store.set(session)
         return session
 
-    def resume_session(self, key: str) -> Optional[Session]:
+    def resume_session(self, key: str) -> Session | None:
         """Resume an existing session.
 
         Args:

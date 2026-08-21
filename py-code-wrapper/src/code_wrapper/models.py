@@ -3,8 +3,10 @@
 Generated from claude-event.v1.schema.json.
 All events are Pydantic BaseModel instances, discriminated by the 'type' field.
 """
+from __future__ import annotations
 
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Union
+
 from pydantic import BaseModel, Field
 
 
@@ -65,8 +67,8 @@ class Usage(BaseModel):
 
     inputTokens: int
     outputTokens: int
-    cacheReadInputTokens: Optional[int] = None
-    cacheCreationInputTokens: Optional[int] = None
+    cacheReadInputTokens: int | None = None
+    cacheCreationInputTokens: int | None = None
 
 
 class ReadyEvent(BaseEvent):
@@ -74,8 +76,8 @@ class ReadyEvent(BaseEvent):
 
     type: Literal["ready"]
     sessionId: str = Field(..., description="CLI-assigned session ID")
-    model: Optional[str] = Field(None, description="Model being used for this run")
-    tools: Optional[list[str]] = Field(None, description="Names of tools available to the agent")
+    model: str | None = Field(None, description="Model being used for this run")
+    tools: list[str] | None = Field(None, description="Names of tools available to the agent")
 
 
 class RetryEvent(BaseEvent):
@@ -83,8 +85,8 @@ class RetryEvent(BaseEvent):
 
     type: Literal["retry"]
     attempt: int = Field(..., description="Attempt number (1-based)")
-    delayMs: Optional[int] = Field(None, description="Delay before this retry in milliseconds")
-    error: Optional[str] = Field(None, description="Error message that triggered the retry")
+    delayMs: int | None = Field(None, description="Delay before this retry in milliseconds")
+    error: str | None = Field(None, description="Error message that triggered the retry")
 
 
 class DoneEvent(BaseEvent):
@@ -94,15 +96,15 @@ class DoneEvent(BaseEvent):
     sessionId: str = Field(
         ..., description="CLI-assigned session ID — store and reuse on next turn"
     )
-    usage: Optional[Usage] = Field(None, description="Token usage information")
-    resultText: Optional[str] = Field(
+    usage: Usage | None = Field(None, description="Token usage information")
+    resultText: str | None = Field(
         None, description="Claude's own final summary/answer text (Claude-only)"
     )
-    isError: Optional[bool] = Field(None, description="Whether the turn ended in an error state")
-    durationMs: Optional[int] = Field(None, description="Wall-clock duration of the turn in ms")
-    totalCostUsd: Optional[float] = Field(None, description="Total cost of the turn in USD")
-    numTurns: Optional[int] = Field(None, description="Number of turns in the conversation")
-    stopReason: Optional[str] = Field(
+    isError: bool | None = Field(None, description="Whether the turn ended in an error state")
+    durationMs: int | None = Field(None, description="Wall-clock duration of the turn in ms")
+    totalCostUsd: float | None = Field(None, description="Total cost of the turn in USD")
+    numTurns: int | None = Field(None, description="Number of turns in the conversation")
+    stopReason: str | None = Field(
         None, description="Stop reason (Copilot-only, e.g. 'end_turn')"
     )
 
@@ -124,7 +126,7 @@ class ErrorEvent(BaseEvent):
         "aborted",
     ] = Field(..., description="Error code discriminator")
     detail: str = Field(..., description="Human-readable error detail")
-    exitCode: Optional[int] = Field(None, description="Process exit code if applicable")
+    exitCode: int | None = Field(None, description="Process exit code if applicable")
 
 
 class RawEvent(BaseEvent):
@@ -132,7 +134,7 @@ class RawEvent(BaseEvent):
 
     type: Literal["raw"]
     rawType: str = Field(..., description="The 'type' field from the raw CLI event")
-    rawSubtype: Optional[str] = Field(None, description="The 'subtype' field if present")
+    rawSubtype: str | None = Field(None, description="The 'subtype' field if present")
     data: Any = Field(..., description="The full raw parsed JSON object")
 
 

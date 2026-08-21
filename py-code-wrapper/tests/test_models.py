@@ -1,18 +1,17 @@
 """Tests for code-wrapper event models."""
 
-import pytest
 
 from code_wrapper.models import (
-    TextEvent,
-    ThinkingEvent,
-    ToolUseEvent,
-    ToolResultEvent,
-    ProgressEvent,
-    ReadyEvent,
-    RetryEvent,
     DoneEvent,
     ErrorEvent,
+    ProgressEvent,
     RawEvent,
+    ReadyEvent,
+    RetryEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
     Usage,
     deserialize_event,
 )

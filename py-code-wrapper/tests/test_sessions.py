@@ -4,13 +4,11 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
 from code_wrapper.sessions import (
+    FileStore,
+    MemoryStore,
     Session,
     SessionManager,
-    MemoryStore,
-    FileStore,
     create_session_store,
 )
 
@@ -224,7 +222,7 @@ class TestSessionManager:
 
         session1 = manager.resume_session("user-123")
         if session1:
-            original_timestamp = session1.lastActiveAt
+            pass
 
         # Wait a tiny bit and touch
         import time

@@ -8,11 +8,11 @@ from unittest.mock import patch
 import pytest
 
 from code_wrapper._binary import (
-    resolve_binary,
     CodeWrapperBinaryError,
     _get_platform_binary_name,
     _resolve_from_env,
     _resolve_from_path,
+    resolve_binary,
 )
 
 
@@ -96,29 +96,21 @@ class TestResolveFromEnv:
 class TestResolveFromPath:
     """Test binary resolution from PATH."""
 
-    @patch("subprocess.run")
-    def test_resolve_found_in_path(self, mock_run):
+    @patch("shutil.which")
+    def test_resolve_found_in_path(self, mock_which):
         with tempfile.NamedTemporaryFile(delete=False) as f:
             temp_path = f.name
 
         try:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = temp_path
-
+            mock_which.return_value = temp_path
             result = _resolve_from_path()
             assert result == Path(temp_path)
         finally:
             Path(temp_path).unlink()
 
-    @patch("subprocess.run")
-    def test_resolve_not_in_path(self, mock_run):
-        mock_run.return_value.returncode = 1
-        result = _resolve_from_path()
-        assert result is None
-
-    @patch("subprocess.run")
-    def test_resolve_which_not_available(self, mock_run):
-        mock_run.side_effect = FileNotFoundError()
+    @patch("shutil.which")
+    def test_resolve_not_in_path(self, mock_which):
+        mock_which.return_value = None
         result = _resolve_from_path()
         assert result is None
 
@@ -131,11 +123,13 @@ class TestResolveBinary:
             temp_path = f.name
 
         try:
-            with patch.dict(os.environ, {"CODE_WRAPPER_BINARY": temp_path}):
-                with patch("code_wrapper._binary._resolve_from_path", return_value=None):
-                    with patch("code_wrapper._binary._resolve_bundled", return_value=None):
-                        result = resolve_binary()
-                        assert result == Path(temp_path)
+            with (
+                patch.dict(os.environ, {"CODE_WRAPPER_BINARY": temp_path}),
+                patch("code_wrapper._binary._resolve_from_path", return_value=None),
+                patch("code_wrapper._binary._resolve_bundled", return_value=None),
+            ):
+                result = resolve_binary()
+                assert result == Path(temp_path)
         finally:
             Path(temp_path).unlink()
 
@@ -144,12 +138,14 @@ class TestResolveBinary:
             temp_path = f.name
 
         try:
-            with patch.dict(os.environ, {}, clear=False):
+            with (
+                patch.dict(os.environ, {}, clear=False),
+                patch("code_wrapper._binary._resolve_from_path", return_value=Path(temp_path)),
+                patch("code_wrapper._binary._resolve_bundled", return_value=None),
+            ):
                 os.environ.pop("CODE_WRAPPER_BINARY", None)
-                with patch("code_wrapper._binary._resolve_from_path", return_value=Path(temp_path)):
-                    with patch("code_wrapper._binary._resolve_bundled", return_value=None):
-                        result = resolve_binary()
-                        assert result == Path(temp_path)
+                result = resolve_binary()
+                assert result == Path(temp_path)
         finally:
             Path(temp_path).unlink()
 
@@ -158,22 +154,24 @@ class TestResolveBinary:
             temp_path = f.name
 
         try:
-            with patch.dict(os.environ, {}, clear=False):
+            with (
+                patch.dict(os.environ, {}, clear=False),
+                patch("code_wrapper._binary._resolve_from_path", return_value=None),
+                patch("code_wrapper._binary._resolve_bundled", return_value=Path(temp_path)),
+            ):
                 os.environ.pop("CODE_WRAPPER_BINARY", None)
-                with patch("code_wrapper._binary._resolve_from_path", return_value=None):
-                    with patch(
-                        "code_wrapper._binary._resolve_bundled", return_value=Path(temp_path)
-                    ):
-                        result = resolve_binary()
-                        assert result == Path(temp_path)
+                result = resolve_binary()
+                assert result == Path(temp_path)
         finally:
             Path(temp_path).unlink()
 
     def test_not_found_raises_error(self):
-        with patch.dict(os.environ, {}, clear=False):
+        with (
+            patch.dict(os.environ, {}, clear=False),
+            patch("code_wrapper._binary._resolve_from_path", return_value=None),
+            patch("code_wrapper._binary._resolve_bundled", return_value=None),
+        ):
             os.environ.pop("CODE_WRAPPER_BINARY", None)
-            with patch("code_wrapper._binary._resolve_from_path", return_value=None):
-                with patch("code_wrapper._binary._resolve_bundled", return_value=None):
-                    with pytest.raises(CodeWrapperBinaryError) as exc_info:
-                        resolve_binary()
-                    assert "not found" in str(exc_info.value).lower()
+            with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                resolve_binary()
+            assert "not found" in str(exc_info.value).lower()
