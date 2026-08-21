@@ -102,8 +102,8 @@ function parseArgs(argv: string[]): ExecOptions {
     try {
       prompt = readFileSync(0, 'utf-8');
     } catch (err) {
-      console.error(`Warning: Failed to read prompt from stdin: ${err instanceof Error ? err.message : String(err)}`);
-      prompt = '';
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to read prompt from stdin: ${errorMsg}`);
     }
   }
 
