@@ -110,21 +110,22 @@ code-wrapper exec \
 |------|---------|--------|
 | **0** | Clean completion | DoneEvent was emitted; session finished normally |
 | **1** | CLI error | ErrorEvent was emitted before exit (e.g., rate limit, spawn error) |
-| **2** | Binary-level failure | No events emitted; binary crash or failed to spawn CLI (e.g., `claude` binary not found) |
-| **3** | Wire protocol error | Internal bug (unexpected exception in generator) |
+| **2** | Fatal error | Unexpected exception during initialization or event processing |
 
 The Python client (`py-code-wrapper`) translates exit codes into exceptions:
 - Code 2 → `CodeWrapperBinaryError`
-- Code 3 → `CodeWrapperProtocolError`
 
 ## Process Group Management
 
-On Unix-like systems, the binary establishes its own process group via `process.setpgid(0, 0)` so that the spawned CLI (and any of its children) are isolated. This ensures:
+When the binary spawns the CLI, it uses `detached: true` to create a separate process group for the child. This means:
 
-1. **SIGTERM forwarding**: The binary forwards SIGTERM to the entire process group, allowing clean shutdown of the CLI
-2. **SIGKILL protection**: If the binary is forcibly killed, the OS reaps the entire group atomically
+- The spawned CLI and its descendants form an isolated process group
+- The binary can send signals to the entire group using negative PID (`-proc.pid`)
+- On Windows, `process.kill()` targets only the immediate process (negative PIDs are not supported)
 
-The Python client mirrors this pattern by spawning the binary with `start_new_session=True`, creating a second isolation boundary for extra safety.
+**Note**: `process.setpgid()` is not a Node.js API, so the binary cannot establish its own separate process group in isolation; it runs in its parent's group. However, the spawned CLI's process group is isolated via `detached: true`, allowing independent lifecycle management.
+
+The Python client mirrors this pattern by spawning the binary with `start_new_session=True`, creating an additional isolation boundary for extra safety.
 
 ### Timing
 

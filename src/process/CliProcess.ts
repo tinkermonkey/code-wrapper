@@ -169,14 +169,10 @@ export class CliProcess {
     const waitForEvent = (): Promise<void> =>
       new Promise<void>(r => { queueNotify = r; });
 
-    // Immediate heartbeat so callers receive a progress event at process start
-    // without waiting for the first watchdog tick.
     pushEvent({
       seq: seq++, timestamp: Date.now(), type: 'progress', elapsed: 0,
     } satisfies ProgressEvent);
 
-    // Spawn errors (ENOENT, EACCES, etc.) arrive asynchronously via 'error'.
-    // Save the event so it can be yielded after the consume loop drains.
     let spawnError: ErrorEvent | null = null;
     proc.on('error', (err: Error) => {
       spawnError = {
@@ -186,8 +182,6 @@ export class CliProcess {
       pushEvent(null);
     });
 
-    // Copilot: stateful ACP parser tracks sessionUuid across lines.
-    // Claude: stateless parseCliLine.
     const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
@@ -202,14 +196,20 @@ export class CliProcess {
 
     let sigkillTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // AbortSignal: kill the process group and mark the reason so the correct
-    // ErrorEvent is yielded after the consume loop drains.
-    // Using -proc.pid kills the entire process group on Unix.
+    const killProcessGroup = (signal: 'SIGTERM' | 'SIGKILL'): void => {
+      if (proc.pid == null) return;
+      if (process.platform === 'win32') {
+        process.kill(proc.pid, signal);
+      } else {
+        process.kill(-proc.pid, signal);
+      }
+    };
+
     const abortHandler = (): void => {
       if (killedBy) return;
       killedBy = 'aborted';
-      process.kill(-proc.pid!, 'SIGTERM');
-      sigkillTimer = setTimeout(() => process.kill(-proc.pid!, 'SIGKILL'), _sigkillDelayMs);
+      killProcessGroup('SIGTERM');
+      sigkillTimer = setTimeout(() => killProcessGroup('SIGKILL'), _sigkillDelayMs);
     };
     if (signal) {
       signal.addEventListener('abort', abortHandler);
@@ -219,9 +219,6 @@ export class CliProcess {
       if (signal.aborted) abortHandler();
     }
 
-    // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
-    // On timeout: SIGTERM first, SIGKILL after _sigkillDelayMs if still alive.
-    // Using -proc.pid kills the entire process group on Unix.
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (killedBy) return;
@@ -231,12 +228,12 @@ export class CliProcess {
       } satisfies ProgressEvent);
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
-        process.kill(-proc.pid!, 'SIGTERM');
-        sigkillTimer = setTimeout(() => process.kill(-proc.pid!, 'SIGKILL'), _sigkillDelayMs);
+        killProcessGroup('SIGTERM');
+        sigkillTimer = setTimeout(() => killProcessGroup('SIGKILL'), _sigkillDelayMs);
       } else if (now - startedAt > maxTimeout * 1_000) {
         killedBy = 'max';
-        process.kill(-proc.pid!, 'SIGTERM');
-        sigkillTimer = setTimeout(() => process.kill(-proc.pid!, 'SIGKILL'), _sigkillDelayMs);
+        killProcessGroup('SIGTERM');
+        sigkillTimer = setTimeout(() => killProcessGroup('SIGKILL'), _sigkillDelayMs);
       }
     }, _watchdogIntervalMs);
 
@@ -348,11 +345,19 @@ export class CliProcess {
   /** SIGTERM the active subprocess process group, escalating to SIGKILL after gracePeriodMs */
   async kill(gracePeriodMs = 3_000): Promise<void> {
     const proc = this.activeProc;
-    if (!proc) return;
-    // Kill the process group (using -proc.pid on Unix) to ensure all children are terminated
-    process.kill(-proc.pid!, 'SIGTERM');
+    if (!proc || proc.pid == null) return;
+
+    const killProcessGroup = (signal: 'SIGTERM' | 'SIGKILL'): void => {
+      if (process.platform === 'win32') {
+        process.kill(proc.pid!, signal);
+      } else {
+        process.kill(-proc.pid!, signal);
+      }
+    };
+
+    killProcessGroup('SIGTERM');
     await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { process.kill(-proc.pid!, 'SIGKILL'); resolve(); }, gracePeriodMs);
+      const timer = setTimeout(() => { killProcessGroup('SIGKILL'); resolve(); }, gracePeriodMs);
       proc.once('close', () => { clearTimeout(timer); resolve(); });
     });
     this.activeProc = null;
