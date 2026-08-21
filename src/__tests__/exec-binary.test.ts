@@ -198,9 +198,13 @@ describe('code-wrapper exec binary', () => {
       const result = await spawnBinaryWithFixture(fakeClaudePath, 'claude', 'golden-path', [
         '--prompt', 'test',
       ]);
-      // This should either exit 0 (cwd defaults to process.cwd) or 2 if validation fails
-      // Based on the implementation, cwd defaults to process.cwd(), so this should be 0
-      expect([0, 2]).toContain(result.exitCode);
+      // cwd defaults to process.cwd()
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('exits with code 1 on child process error', async () => {
+      const result = await spawnBinaryWithFixture(fakeClaudePath, 'claude', 'nonzero-exit');
+      expect(result.exitCode).toBe(1);
     });
   });
 });
