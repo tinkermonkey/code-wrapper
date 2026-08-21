@@ -7,13 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-from code_wrapper._binary import (
-    CodeWrapperBinaryError,
-    _get_platform_binary_name,
-    _resolve_from_env,
-    _resolve_from_path,
-    resolve_binary,
-)
+from code_wrapper._binary import (CodeWrapperBinaryError,
+                                  _get_platform_binary_name, _resolve_from_env,
+                                  _resolve_from_path, resolve_binary)
 
 
 class TestPlatformBinaryName:

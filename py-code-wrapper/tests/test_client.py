@@ -6,11 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from code_wrapper import (
-    ClientOptions,
-    CodeWrapper,
-    CodeWrapperProtocolError,
-)
+from code_wrapper import ClientOptions, CodeWrapper, CodeWrapperProtocolError
 
 
 def create_mock_process():
