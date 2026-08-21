@@ -23,6 +23,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any, cast
 
 # Repository details
 GITHUB_OWNER = "tinkermonkey"
@@ -30,7 +31,7 @@ GITHUB_REPO = "code-wrapper"
 BINARIES_DIR = Path(__file__).parent.parent / "src" / "code_wrapper" / "binaries"
 
 
-def get_current_platform() -> str:
+def get_current_platform() -> str | None:
     """Detect the current platform and return the matching binary name suffix.
 
     Returns:
@@ -54,7 +55,7 @@ def get_current_platform() -> str:
     return None
 
 
-def get_release_info(version: str = "latest") -> dict:
+def get_release_info(version: str = "latest") -> dict[Any, Any] | None:
     """Fetch release information from GitHub API.
 
     Args:
@@ -72,7 +73,7 @@ def get_release_info(version: str = "latest") -> dict:
 
     try:
         with urllib.request.urlopen(api_url) as response:
-            return json.loads(response.read().decode())
+            return cast(dict[Any, Any], json.loads(response.read().decode()))
     except urllib.error.HTTPError as e:
         if e.code == 404:
             print(
