@@ -25,7 +25,10 @@ def download_binaries():
             check=False,
         )
         if result.returncode != 0:
-            print(f"Warning: Binary download script exited with code {result.returncode}", file=sys.stderr)
+            print(
+                f"Warning: Binary download script exited with code {result.returncode}",
+                file=sys.stderr,
+            )
     except Exception as e:
         print(f"Warning: Failed to download binaries: {e}", file=sys.stderr)
 

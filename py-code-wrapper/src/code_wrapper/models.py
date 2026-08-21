@@ -3,6 +3,7 @@
 Generated from claude-event.v1.schema.json.
 All events are Pydantic BaseModel instances, discriminated by the 'type' field.
 """
+
 from __future__ import annotations
 
 from typing import Any, Literal, Union
@@ -104,9 +105,7 @@ class DoneEvent(BaseEvent):
     durationMs: int | None = Field(None, description="Wall-clock duration of the turn in ms")
     totalCostUsd: float | None = Field(None, description="Total cost of the turn in USD")
     numTurns: int | None = Field(None, description="Number of turns in the conversation")
-    stopReason: str | None = Field(
-        None, description="Stop reason (Copilot-only, e.g. 'end_turn')"
-    )
+    stopReason: str | None = Field(None, description="Stop reason (Copilot-only, e.g. 'end_turn')")
 
 
 class ErrorEvent(BaseEvent):

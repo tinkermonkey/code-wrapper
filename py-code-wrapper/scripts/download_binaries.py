@@ -66,14 +66,18 @@ def get_release_info(version: str = "latest") -> dict:
     if version == "latest":
         api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
     else:
-        api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/tags/{version}"
+        api_url = (
+            f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/tags/{version}"
+        )
 
     try:
         with urllib.request.urlopen(api_url) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            print(f"Release '{version}' not found for {GITHUB_OWNER}/{GITHUB_REPO}", file=sys.stderr)
+            print(
+                f"Release '{version}' not found for {GITHUB_OWNER}/{GITHUB_REPO}", file=sys.stderr
+            )
             return None
         raise
 
@@ -122,7 +126,10 @@ def main():
         # Download only current platform (for local builds)
         current_platform = get_current_platform()
         if not current_platform:
-            print(f"Warning: Unsupported platform ({platform.system()} {platform.machine()})", file=sys.stderr)
+            print(
+                f"Warning: Unsupported platform ({platform.system()} {platform.machine()})",
+                file=sys.stderr,
+            )
             print("Set CODE_WRAPPER_VERSION=all to download all platforms.", file=sys.stderr)
             return 0
         binary_names = [f"code-wrapper-{current_platform}"]
@@ -131,8 +138,14 @@ def main():
     # Get release info
     release_info = get_release_info(release_version)
     if not release_info:
-        print(f"Warning: Could not fetch release '{release_version}'. Skipping binary download.", file=sys.stderr)
-        print("The package will still work if you provide CODE_WRAPPER_BINARY env var or 'code-wrapper' in PATH.", file=sys.stderr)
+        print(
+            f"Warning: Could not fetch release '{release_version}'. Skipping binary download.",
+            file=sys.stderr,
+        )
+        print(
+            "The package will still work if you provide CODE_WRAPPER_BINARY env var or 'code-wrapper' in PATH.",
+            file=sys.stderr,
+        )
         return 0
 
     # Find and download binaries
@@ -149,11 +162,20 @@ def main():
                 downloaded_count += 1
 
     if downloaded_count == 0:
-        print(f"Warning: No binaries were downloaded from release '{release_version}'.", file=sys.stderr)
-        print("The package will still work if you provide CODE_WRAPPER_BINARY env var or 'code-wrapper' in PATH.", file=sys.stderr)
+        print(
+            f"Warning: No binaries were downloaded from release '{release_version}'.",
+            file=sys.stderr,
+        )
+        print(
+            "The package will still work if you provide CODE_WRAPPER_BINARY env var or 'code-wrapper' in PATH.",
+            file=sys.stderr,
+        )
         return 0
 
-    print(f"Successfully downloaded {downloaded_count}/{len(binary_names)} binaries from {release_version}.", file=sys.stderr)
+    print(
+        f"Successfully downloaded {downloaded_count}/{len(binary_names)} binaries from {release_version}.",
+        file=sys.stderr,
+    )
     return 0
 
 

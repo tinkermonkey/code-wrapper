@@ -1,6 +1,5 @@
 """Tests for code-wrapper event models."""
 
-
 from code_wrapper.models import (
     DoneEvent,
     ErrorEvent,

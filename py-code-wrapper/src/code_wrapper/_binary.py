@@ -5,6 +5,7 @@ Resolves the compiled binary in order:
 2. 'code-wrapper' in PATH
 3. Package-bundled binary for the current platform
 """
+
 from __future__ import annotations
 
 import os
@@ -15,7 +16,6 @@ from pathlib import Path
 
 class CodeWrapperBinaryError(Exception):
     """Raised when the code-wrapper binary cannot be found or executed."""
-
 
 
 def _get_platform_binary_name() -> str:
