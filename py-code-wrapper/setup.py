@@ -7,6 +7,7 @@ the package. It's called by setuptools during installation.
 import subprocess
 import sys
 from pathlib import Path
+
 from setuptools import setup
 
 

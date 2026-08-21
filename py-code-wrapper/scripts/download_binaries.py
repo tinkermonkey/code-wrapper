@@ -16,12 +16,12 @@ Supported platforms:
 - code-wrapper-darwin-arm64
 """
 
-import os
-import sys
 import json
+import os
 import platform
-import urllib.request
+import sys
 import urllib.error
+import urllib.request
 from pathlib import Path
 
 # Repository details
@@ -98,7 +98,7 @@ def download_binary(url: str, output_path: Path) -> bool:
         # Make executable
         output_path.chmod(0o755)
         return True
-    except Exception as e:
+    except (urllib.error.URLError, OSError) as e:
         print(f"Failed to download {output_path.name}: {e}", file=sys.stderr)
         return False
 
