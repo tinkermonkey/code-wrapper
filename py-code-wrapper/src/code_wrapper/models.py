@@ -6,7 +6,7 @@ All events are Pydantic BaseModel instances, discriminated by the 'type' field.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -138,18 +138,18 @@ class RawEvent(BaseEvent):
 
 
 # Discriminated union of all event types
-ClaudeEvent = Union[
-    TextEvent,
-    ThinkingEvent,
-    ToolUseEvent,
-    ToolResultEvent,
-    ProgressEvent,
-    ReadyEvent,
-    RetryEvent,
-    DoneEvent,
-    ErrorEvent,
-    RawEvent,
-]
+ClaudeEvent = (
+    TextEvent
+    | ThinkingEvent
+    | ToolUseEvent
+    | ToolResultEvent
+    | ProgressEvent
+    | ReadyEvent
+    | RetryEvent
+    | DoneEvent
+    | ErrorEvent
+    | RawEvent
+)
 
 
 def deserialize_event(data: dict[str, Any]) -> ClaudeEvent:
