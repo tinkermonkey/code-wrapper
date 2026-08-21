@@ -20,9 +20,9 @@ jobs:
       - name: Extract release tag
         run: |
           # Get the tag from the commit that triggered the release-binaries workflow
-          TAG=$(git describe --tags --exact-match ${{ github.event.workflow_run.head_commit }} 2>/dev/null || echo "")
+          TAG=$(git describe --tags --exact-match ${{ github.event.workflow_run.head_sha }} 2>/dev/null || echo "")
           if [ -z "$TAG" ]; then
-            echo "ERROR: Could not find tag for commit ${{ github.event.workflow_run.head_commit }}"
+            echo "ERROR: Could not find tag for commit ${{ github.event.workflow_run.head_sha }}"
             exit 1
           fi
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
