@@ -147,6 +147,7 @@ class CodeWrapper:
                             type="error",
                             code="parse_error",
                             detail=f"Failed to parse JSON: {e}",
+                            exitCode=None,
                         )
                         continue
 
@@ -172,6 +173,7 @@ class CodeWrapper:
                             type="error",
                             code="parse_error",
                             detail=f"Failed to deserialize event: {e}",
+                            exitCode=None,
                         )
 
         finally:

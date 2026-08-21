@@ -85,9 +85,7 @@ class TestProtocolVersionCheck:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
 
-            with patch(
-                "code_wrapper.client.asyncio.create_subprocess_exec"
-            ) as mock_subprocess:
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
                 mock_process = create_mock_process()
 
                 # First line has wrong version
@@ -113,9 +111,7 @@ class TestProtocolVersionCheck:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
 
-            with patch(
-                "code_wrapper.client.asyncio.create_subprocess_exec"
-            ) as mock_subprocess:
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
                 # Create mock process
                 mock_process = create_mock_process()
 
@@ -148,9 +144,7 @@ class TestJsonParsing:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
 
-            with patch(
-                "code_wrapper.client.asyncio.create_subprocess_exec"
-            ) as mock_subprocess:
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
                 mock_process = create_mock_process()
 
                 # Invalid JSON line
@@ -179,9 +173,7 @@ class TestJsonParsing:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
 
-            with patch(
-                "code_wrapper.client.asyncio.create_subprocess_exec"
-            ) as mock_subprocess:
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
                 mock_process = create_mock_process()
 
                 # Unknown type
@@ -216,9 +208,7 @@ class TestBinaryOptions:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
 
-            with patch(
-                "code_wrapper.client.asyncio.create_subprocess_exec"
-            ) as mock_subprocess:
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
                 mock_process = create_mock_process()
                 mock_process.stdout.readline = AsyncMock(return_value=b"")
 
@@ -241,9 +231,7 @@ class TestBinaryOptions:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
 
-            with patch(
-                "code_wrapper.client.asyncio.create_subprocess_exec"
-            ) as mock_subprocess:
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
                 mock_process = create_mock_process()
                 mock_process.stdout.readline = AsyncMock(return_value=b"")
 
@@ -270,9 +258,7 @@ class TestClaudeCodeEnvDeletion:
                 mock_binary = MagicMock()
                 mock_resolve.return_value = mock_binary
 
-                with patch(
-                    "code_wrapper.client.asyncio.create_subprocess_exec"
-                ) as mock_subprocess:
+                with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
                     mock_process = create_mock_process()
                     mock_process.stdout.readline = AsyncMock(return_value=b"")
 

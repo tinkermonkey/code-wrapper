@@ -36,8 +36,7 @@ def _get_platform_binary_name() -> str:
         arch = "arm64"
     else:
         raise CodeWrapperBinaryError(
-            f"Unsupported architecture: {machine}. "
-            "Supported: x86_64 (x64), aarch64 (arm64)"
+            f"Unsupported architecture: {machine}. " "Supported: x86_64 (x64), aarch64 (arm64)"
         )
 
     if system == "linux":

@@ -48,7 +48,9 @@ class ToolResultEvent(BaseEvent):
     type: Literal["tool_result"]
     toolUseId: str = Field(..., description="References a tool_use id")
     isError: bool = Field(..., description="Whether the tool execution was an error")
-    output: str = Field(..., description="Full combined text output from the tool result content blocks")
+    output: str = Field(
+        ..., description="Full combined text output from the tool result content blocks"
+    )
 
 
 class ProgressEvent(BaseEvent):
@@ -89,7 +91,9 @@ class DoneEvent(BaseEvent):
     """Conversation completion event."""
 
     type: Literal["done"]
-    sessionId: str = Field(..., description="CLI-assigned session ID — store and reuse on next turn")
+    sessionId: str = Field(
+        ..., description="CLI-assigned session ID — store and reuse on next turn"
+    )
     usage: Optional[Usage] = Field(None, description="Token usage information")
     resultText: Optional[str] = Field(
         None, description="Claude's own final summary/answer text (Claude-only)"
@@ -98,7 +102,9 @@ class DoneEvent(BaseEvent):
     durationMs: Optional[int] = Field(None, description="Wall-clock duration of the turn in ms")
     totalCostUsd: Optional[float] = Field(None, description="Total cost of the turn in USD")
     numTurns: Optional[int] = Field(None, description="Number of turns in the conversation")
-    stopReason: Optional[str] = Field(None, description="Stop reason (Copilot-only, e.g. 'end_turn')")
+    stopReason: Optional[str] = Field(
+        None, description="Stop reason (Copilot-only, e.g. 'end_turn')"
+    )
 
 
 class ErrorEvent(BaseEvent):
@@ -151,7 +157,7 @@ def deserialize_event(data: dict[str, Any]) -> ClaudeEvent:
     Discriminates on the 'type' field. Unknown types become RawEvent.
     Raises ValueError if data is missing required fields for a known type.
     """
-    event_type = data.get("type")
+    event_type: str = data.get("type", "")
 
     type_map = {
         "text": TextEvent,
@@ -168,7 +174,7 @@ def deserialize_event(data: dict[str, Any]) -> ClaudeEvent:
 
     event_class = type_map.get(event_type)
     if event_class:
-        return event_class(**data)
+        return event_class(**data)  # type: ignore[no-any-return]
 
     # Unknown type → wrap as RawEvent
     return RawEvent(

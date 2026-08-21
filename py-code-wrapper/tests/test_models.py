@@ -38,9 +38,7 @@ class TestThinkingEvent:
     """Test ThinkingEvent deserialization."""
 
     def test_thinking_event_creation(self):
-        event = ThinkingEvent(
-            v=1, seq=1, timestamp=1000, type="thinking", thinking="Hmm..."
-        )
+        event = ThinkingEvent(v=1, seq=1, timestamp=1000, type="thinking", thinking="Hmm...")
         assert event.type == "thinking"
         assert event.thinking == "Hmm..."
 

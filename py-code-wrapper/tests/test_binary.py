@@ -161,7 +161,9 @@ class TestResolveBinary:
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("CODE_WRAPPER_BINARY", None)
                 with patch("code_wrapper._binary._resolve_from_path", return_value=None):
-                    with patch("code_wrapper._binary._resolve_bundled", return_value=Path(temp_path)):
+                    with patch(
+                        "code_wrapper._binary._resolve_bundled", return_value=Path(temp_path)
+                    ):
                         result = resolve_binary()
                         assert result == Path(temp_path)
         finally:
