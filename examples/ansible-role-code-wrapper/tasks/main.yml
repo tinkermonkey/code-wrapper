@@ -1,0 +1,81 @@
+---
+# Deploy code-wrapper binary to fleet hosts
+
+- name: Detect platform architecture
+  set_fact:
+    _system: "{{ ansible_system | lower }}"
+    _machine: "{{ ansible_architecture | lower }}"
+
+- name: Normalize machine architecture
+  set_fact:
+    _arch: "{{ 'x64' if _machine in ('x86_64', 'amd64') else 'arm64' if _machine in ('aarch64', 'arm64') else _machine }}"
+
+- name: Set target platform
+  set_fact:
+    _target_platform: "{{ _system }}-{{ _arch }}"
+
+- name: Validate platform support
+  assert:
+    that:
+      - _target_platform in ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64']
+    fail_msg: |
+      Unsupported platform: {{ _target_platform }}
+      Supported platforms: linux-x64, linux-arm64, darwin-x64, darwin-arm64
+      System: {{ _system }}, Architecture: {{ _machine }}
+
+- name: Download code-wrapper binary
+  get_url:
+    url: "https://github.com/tinkermonkey/code-wrapper/releases/download/{{ code_wrapper_version }}/code-wrapper-{{ _target_platform }}"
+    dest: "{{ code_wrapper_install_dir }}/code-wrapper"
+    owner: "{{ code_wrapper_owner }}"
+    group: "{{ code_wrapper_group }}"
+    mode: "{{ code_wrapper_mode }}"
+    backup: yes
+    force: yes
+    timeout: "{{ code_wrapper_download_timeout }}"
+  register: _binary_download
+  retries: "{{ code_wrapper_download_retries }}"
+  delay: "{{ code_wrapper_download_delay }}"
+  until: _binary_download is succeeded
+
+- name: Verify binary is executable
+  file:
+    path: "{{ code_wrapper_install_dir }}/code-wrapper"
+    mode: "{{ code_wrapper_mode }}"
+    state: file
+
+- name: Verify binary functionality
+  command: "{{ code_wrapper_install_dir }}/code-wrapper --version"
+  changed_when: false
+  failed_when: false
+  register: _version_check
+
+- name: Record binary version
+  debug:
+    msg: "code-wrapper deployed: {{ _target_platform }}, version output: {{ _version_check.stdout or _version_check.stderr }}"
+
+- name: Track version for idempotency
+  copy:
+    content: "{{ code_wrapper_version }}\n"
+    dest: "{{ code_wrapper_install_dir }}/code-wrapper.version"
+    owner: "{{ code_wrapper_owner }}"
+    group: "{{ code_wrapper_group }}"
+    mode: "0644"
+  when: code_wrapper_track_version
+
+- name: Verify binary is in PATH
+  shell: |
+    if command -v code-wrapper >/dev/null 2>&1; then
+      echo "code-wrapper found in PATH: $(which code-wrapper)"
+      exit 0
+    else
+      echo "WARNING: code-wrapper not found in PATH"
+      echo "Add {{ code_wrapper_install_dir }} to PATH or set CODE_WRAPPER_BINARY={{ code_wrapper_install_dir }}/code-wrapper"
+      exit 0
+    fi
+  changed_when: false
+  register: _path_check
+
+- name: Show PATH verification result
+  debug:
+    msg: "{{ _path_check.stdout_lines }}"

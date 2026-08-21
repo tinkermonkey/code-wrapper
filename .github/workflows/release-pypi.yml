@@ -1,0 +1,106 @@
+name: Release Python Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build Python package (py-code-wrapper)
+        working-directory: ./py-code-wrapper
+        run: |
+          # The setup.py will automatically download binaries from GitHub Releases
+          python -m build
+
+      - name: Verify binaries were bundled
+        working-directory: ./py-code-wrapper
+        run: |
+          # Check that binaries were downloaded and included
+          ls -la src/code_wrapper/binaries/ || echo "WARNING: No binaries found in package"
+          # Extract wheel and verify contents
+          mkdir -p /tmp/wheel_contents
+          cd /tmp/wheel_contents
+          python -m zipfile -e "$(find "$OLDPWD/dist" -name '*.whl' | head -1)" .
+          find . -name "code-wrapper-*" -type f || echo "WARNING: No code-wrapper binaries found in wheel"
+
+      - name: Test wheel installation
+        run: |
+          pip install --no-cache-dir py-code-wrapper/dist/*.whl
+          python -c "from code_wrapper import resolve_binary; print('Binary location:', resolve_binary())"
+
+      - name: Publish to PyPI (on release tags only)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        working-directory: ./py-code-wrapper
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m twine upload dist/* --skip-existing
+
+      - name: Create PyPI release comment
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ## Binary Distribution
+
+            **py-code-wrapper** is available on PyPI with bundled binaries:
+
+            ```bash
+            pip install py-code-wrapper
+            ```
+
+            The package includes platform-specific code-wrapper binaries for:
+            - Linux x64 (linux-x64)
+            - Linux ARM64 (linux-arm64)
+            - macOS Intel (darwin-x64)
+            - macOS Apple Silicon (darwin-arm64)
+
+            ### Usage
+
+            **Docker:**
+            ```dockerfile
+            FROM python:3.11
+            RUN pip install py-code-wrapper
+            ENV CODE_WRAPPER_BINARY=/usr/local/lib/python3.11/site-packages/code_wrapper/binaries/code-wrapper-linux-x64
+            ```
+
+            **Python:**
+            ```python
+            from code_wrapper import CodeWrapper, ClientOptions
+            client = CodeWrapper()
+            async for event in client.run(options):
+                print(event)
+            ```
+
+            **Ansible:**
+            ```yaml
+            - include_role:
+                name: code-wrapper
+              vars:
+                code_wrapper_version: ${{ github.ref_name }}
+            ```
+
+            See [docs/DISTRIBUTION.md](https://github.com/tinkermonkey/code-wrapper/blob/main/docs/DISTRIBUTION.md) for complete distribution documentation.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

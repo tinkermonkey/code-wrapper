@@ -42,5 +42,54 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: dist/${{ matrix.outfile }}
+          body: |
+            ## code-wrapper Binary Release
+
+            Platform-specific standalone binaries are now available for deployment to fleet hosts and containers.
+
+            **No Node.js runtime required** — all binaries are fully self-contained.
+
+            ### Available Binaries
+
+            - `code-wrapper-linux-x64` — Linux AMD64/x86_64
+            - `code-wrapper-linux-arm64` — Linux ARM64/aarch64 (AWS Graviton)
+            - `code-wrapper-darwin-x64` — macOS Intel
+            - `code-wrapper-darwin-arm64` — macOS Apple Silicon (M1+)
+
+            ### Distribution Options
+
+            1. **Direct Download** (manual deployment)
+               ```bash
+               wget https://github.com/tinkermonkey/code-wrapper/releases/download/${{ github.ref_name }}/code-wrapper-linux-x64
+               chmod +x code-wrapper-linux-x64
+               ./code-wrapper-linux-x64 --version
+               ```
+
+            2. **Docker** (with py-code-wrapper)
+               ```dockerfile
+               FROM python:3.11
+               RUN pip install py-code-wrapper
+               ```
+
+            3. **Ansible** (fleet hosts)
+               ```yaml
+               - include_role:
+                   name: code-wrapper
+                 vars:
+                   code_wrapper_version: ${{ github.ref_name }}
+               ```
+
+            ### Documentation
+
+            - [Distribution Guide](https://github.com/tinkermonkey/code-wrapper/blob/main/docs/DISTRIBUTION.md) — Complete deployment guide
+            - [Examples](https://github.com/tinkermonkey/code-wrapper/tree/main/examples) — Docker, Ansible, Docker Compose
+            - [py-code-wrapper](https://github.com/tinkermonkey/code-wrapper/blob/main/py-code-wrapper/README.md) — Python package info
+
+            ### Checksums
+
+            Verify binary integrity by checking file size after download. GitHub provides SHA checksums in release assets metadata.
+          draft: false
+          prerelease: false
+          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

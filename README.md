@@ -139,6 +139,55 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for full design details, interface specs, and use-case mapping.
 
+## Distribution (Phase 4)
+
+The `code-wrapper` binary is compiled to standalone, platform-specific executables that require **no Node.js runtime**. Multiple distribution channels are available:
+
+### Quick Start
+
+**For Python environments:**
+```bash
+pip install py-code-wrapper
+# Binary is automatically bundled and available via code_wrapper.resolve_binary()
+```
+
+**For Docker:**
+```dockerfile
+FROM python:3.11-slim
+RUN pip install py-code-wrapper
+ENV CODE_WRAPPER_BINARY=/usr/local/lib/python3.11/site-packages/code_wrapper/binaries/code-wrapper-linux-x64
+```
+
+**For Ansible-managed fleet hosts:**
+```yaml
+- include_role:
+    name: code-wrapper
+  vars:
+    code_wrapper_version: v0.1.0
+    code_wrapper_install_dir: /usr/local/bin
+```
+
+### Distribution Channels
+
+| Channel | Format | Use case |
+|---|---|---|
+| **GitHub Releases** | Platform-specific binaries | Manual deployment, CI/CD |
+| **py-code-wrapper PyPI** | Python package with bundled binary | Python applications, Docker images |
+| **Ansible role** | Reusable playbook role | Fleet host management, version pinning |
+
+### Documentation
+
+- [Full Distribution Guide](./docs/DISTRIBUTION.md) — All channels, Docker, Ansible, version pinning
+- [Example Configurations](./examples/) — Docker, Docker Compose, Ansible playbooks
+- [py-code-wrapper Package](./py-code-wrapper/README.md) — Python API and binary resolution
+
+### Platform Support
+
+- **linux-x64**: AMD64 / x86_64 systems
+- **linux-arm64**: ARM64 / aarch64 systems (AWS Graviton, etc.)
+- **darwin-x64**: macOS Intel
+- **darwin-arm64**: macOS Apple Silicon (M1+)
+
 ## Testing
 
 ### Fast suite

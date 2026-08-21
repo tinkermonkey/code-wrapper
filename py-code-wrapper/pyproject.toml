@@ -2,6 +2,9 @@
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# Binary download happens in setup.py before setup() is called
+# This ensures binaries from GitHub Releases are included in the built wheel
+
 [project]
 name = "py-code-wrapper"
 version = "0.1.0"

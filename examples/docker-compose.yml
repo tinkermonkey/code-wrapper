@@ -1,0 +1,49 @@
+# Example Docker Compose setup using code-wrapper binary
+
+version: "3.8"
+
+services:
+  # Python application with code-wrapper
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Code-wrapper configuration
+      CODE_WRAPPER_BINARY: /usr/local/lib/python3.11/site-packages/code_wrapper/binaries/code-wrapper-linux-x64
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+    volumes:
+      - ./app:/app
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    # Healthcheck to ensure code-wrapper is available
+    healthcheck:
+      test:
+        - CMD
+        - /bin/sh
+        - -c
+        - test -x $$CODE_WRAPPER_BINARY && $$CODE_WRAPPER_BINARY --version
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # Optional: isolated container for code-wrapper processing
+  code-wrapper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      CODE_WRAPPER_BINARY: /usr/local/lib/python3.11/site-packages/code_wrapper/binaries/code-wrapper-linux-x64
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    volumes:
+      - ./app:/app
+      - ./work:/work
+    restart: unless-stopped
+
+volumes:
+  data:
+  work:

@@ -1,0 +1,65 @@
+---
+# Example Ansible playbook for deploying code-wrapper to fleet hosts
+
+- name: Deploy code-wrapper to fleet hosts
+  hosts: fleet
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Override these in group_vars, host_vars, or pass via -e
+    code_wrapper_version: "v0.1.0"
+    code_wrapper_install_dir: /usr/local/bin
+
+  roles:
+    - code-wrapper
+
+  post_tasks:
+    - name: Create code-wrapper configuration directory
+      file:
+        path: /etc/code-wrapper
+        state: directory
+        mode: "0755"
+
+    - name: Document deployment
+      copy:
+        content: |
+          code-wrapper deployment info
+          =============================
+
+          Version: {{ code_wrapper_version }}
+          Platform: {{ _target_platform }}
+          Install path: {{ code_wrapper_install_dir }}/code-wrapper
+          Deployed at: {{ ansible_date_time.iso8601 }}
+          Deployed by: {{ ansible_user_id }}@{{ inventory_hostname }}
+
+          Usage:
+            export CODE_WRAPPER_BINARY={{ code_wrapper_install_dir }}/code-wrapper
+            code-wrapper --help
+
+        dest: /etc/code-wrapper/deployment-info.txt
+        mode: "0644"
+
+    - name: Show deployment summary
+      debug:
+        msg: |
+          ✓ code-wrapper {{ code_wrapper_version }} deployed to {{ inventory_hostname }}
+          • Platform: {{ _target_platform }}
+          • Location: {{ code_wrapper_install_dir }}/code-wrapper
+          • Ready to use
+
+# Deployment usage:
+#
+# Deploy to all hosts in fleet group:
+#   ansible-playbook deploy-code-wrapper.yml
+#
+# Deploy specific version to production hosts only:
+#   ansible-playbook deploy-code-wrapper.yml \
+#     -i inventory/production \
+#     -e code_wrapper_version=v0.2.0
+#
+# Rolling update with service restarts:
+#   ansible-playbook deploy-code-wrapper.yml \
+#     -i inventory \
+#     -e code_wrapper_version=v0.2.0 \
+#     --extra-vars="restart_services=true"
