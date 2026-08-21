@@ -181,9 +181,7 @@ class CodeWrapper:
                 await self._cleanup_process()
                 # Check for binary error exit codes
                 if self._process.returncode == 2:
-                    raise CodeWrapperBinaryError("Binary exited with code 2 (unhandled rejection)")
-                elif self._process.returncode == 3:
-                    raise CodeWrapperProtocolError("Binary exited with code 3 (internal error)")
+                    raise CodeWrapperBinaryError("Binary exited with code 2 (fatal error)")
 
     @staticmethod
     def _preexec_fn():

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent, ReadyEvent } from '../events/types.js';
 import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
@@ -29,6 +29,15 @@ export class CliProcess {
   private activeProc: ChildProcess | null = null;
 
   constructor(private readonly backend: CliBackend = 'claude') {}
+
+  private killProcessGroup(proc: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
+    if (proc.pid == null) return;
+    if (process.platform === 'win32') {
+      process.kill(proc.pid, signal);
+    } else {
+      process.kill(-proc.pid, signal);
+    }
+  }
 
   /** Returns true if the backend binary is found in PATH */
   async isAvailable(): Promise<boolean> {
@@ -81,9 +90,9 @@ export class CliProcess {
       delete env['CLAUDE_CODE_OAUTH_TOKEN'];
     }
 
-    const spawnOpts: any = {
+    const spawnOpts: SpawnOptions = {
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'] as const,
       env,
       detached: true,
     };
@@ -196,20 +205,11 @@ export class CliProcess {
 
     let sigkillTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const killProcessGroup = (signal: 'SIGTERM' | 'SIGKILL'): void => {
-      if (proc.pid == null) return;
-      if (process.platform === 'win32') {
-        process.kill(proc.pid, signal);
-      } else {
-        process.kill(-proc.pid, signal);
-      }
-    };
-
     const abortHandler = (): void => {
       if (killedBy) return;
       killedBy = 'aborted';
-      killProcessGroup('SIGTERM');
-      sigkillTimer = setTimeout(() => killProcessGroup('SIGKILL'), _sigkillDelayMs);
+      this.killProcessGroup(proc, 'SIGTERM');
+      sigkillTimer = setTimeout(() => this.killProcessGroup(proc, 'SIGKILL'), _sigkillDelayMs);
     };
     if (signal) {
       signal.addEventListener('abort', abortHandler);
@@ -228,12 +228,12 @@ export class CliProcess {
       } satisfies ProgressEvent);
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
-        killProcessGroup('SIGTERM');
-        sigkillTimer = setTimeout(() => killProcessGroup('SIGKILL'), _sigkillDelayMs);
+        this.killProcessGroup(proc, 'SIGTERM');
+        sigkillTimer = setTimeout(() => this.killProcessGroup(proc, 'SIGKILL'), _sigkillDelayMs);
       } else if (now - startedAt > maxTimeout * 1_000) {
         killedBy = 'max';
-        killProcessGroup('SIGTERM');
-        sigkillTimer = setTimeout(() => killProcessGroup('SIGKILL'), _sigkillDelayMs);
+        this.killProcessGroup(proc, 'SIGTERM');
+        sigkillTimer = setTimeout(() => this.killProcessGroup(proc, 'SIGKILL'), _sigkillDelayMs);
       }
     }, _watchdogIntervalMs);
 
@@ -347,17 +347,9 @@ export class CliProcess {
     const proc = this.activeProc;
     if (!proc || proc.pid == null) return;
 
-    const killProcessGroup = (signal: 'SIGTERM' | 'SIGKILL'): void => {
-      if (process.platform === 'win32') {
-        process.kill(proc.pid!, signal);
-      } else {
-        process.kill(-proc.pid!, signal);
-      }
-    };
-
-    killProcessGroup('SIGTERM');
+    this.killProcessGroup(proc, 'SIGTERM');
     await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { killProcessGroup('SIGKILL'); resolve(); }, gracePeriodMs);
+      const timer = setTimeout(() => { this.killProcessGroup(proc, 'SIGKILL'); resolve(); }, gracePeriodMs);
       proc.once('close', () => { clearTimeout(timer); resolve(); });
     });
     this.activeProc = null;

@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
-import { readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CliProcess } from '../process/CliProcess.js';
 import { SessionManager } from '../sessions/SessionManager.js';
 import { runWithRecovery } from '../process/recovery.js';
 import type { CliBackend, ProcessOptions } from '../process/types.js';
-import type { ClaudeEvent } from '../events/types.js';
 
 interface ExecOptions {
   backend: CliBackend;
@@ -21,7 +20,6 @@ interface ExecOptions {
   mcpConfigPath?: string;
   sessionDir?: string;
   recoverStaleSession: boolean;
-  signal?: AbortSignal;
 }
 
 function parseArgs(argv: string[]): ExecOptions {
