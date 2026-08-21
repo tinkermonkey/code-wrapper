@@ -116,6 +116,8 @@ def main():
             "code-wrapper-darwin-x64",
             "code-wrapper-darwin-arm64",
         ]
+        # Use "latest" to fetch release info, but download all platforms
+        release_version = "latest"
     else:
         # Download only current platform (for local builds)
         current_platform = get_current_platform()
@@ -124,11 +126,12 @@ def main():
             print("Set CODE_WRAPPER_VERSION=all to download all platforms.", file=sys.stderr)
             return 0
         binary_names = [f"code-wrapper-{current_platform}"]
+        release_version = version
 
     # Get release info
-    release_info = get_release_info(version)
+    release_info = get_release_info(release_version)
     if not release_info:
-        print(f"Warning: Could not fetch release '{version}'. Skipping binary download.", file=sys.stderr)
+        print(f"Warning: Could not fetch release '{release_version}'. Skipping binary download.", file=sys.stderr)
         print("The package will still work if you provide CODE_WRAPPER_BINARY env var or 'code-wrapper' in PATH.", file=sys.stderr)
         return 0
 
@@ -146,11 +149,11 @@ def main():
                 downloaded_count += 1
 
     if downloaded_count == 0:
-        print(f"Warning: No binaries were downloaded from release '{version}'.", file=sys.stderr)
+        print(f"Warning: No binaries were downloaded from release '{release_version}'.", file=sys.stderr)
         print("The package will still work if you provide CODE_WRAPPER_BINARY env var or 'code-wrapper' in PATH.", file=sys.stderr)
         return 0
 
-    print(f"Successfully downloaded {downloaded_count}/{len(binary_names)} binaries from {version}.", file=sys.stderr)
+    print(f"Successfully downloaded {downloaded_count}/{len(binary_names)} binaries from {release_version}.", file=sys.stderr)
     return 0
 
 
