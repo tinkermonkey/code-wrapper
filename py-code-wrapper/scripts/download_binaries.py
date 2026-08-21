@@ -97,6 +97,14 @@ def verify_checksum(file_path: Path, checksum_url: str) -> bool:
     try:
         with urllib.request.urlopen(checksum_url) as response:
             checksum_data = response.read().decode().strip()
+
+        if not checksum_data:
+            print(
+                f"Checksum verification failed for {file_path.name}: empty checksum file",
+                file=sys.stderr,
+            )
+            return False
+
         expected_checksum = checksum_data.split()[0]
 
         sha256_hash = hashlib.sha256()
