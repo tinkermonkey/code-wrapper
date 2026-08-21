@@ -32,7 +32,7 @@ COPY --from=builder /build/lib /usr/local/lib/python3.11/site-packages
 
 # Copy the binary to a standard location
 COPY --from=builder \
-    /usr/local/lib/python3.11/site-packages/code_wrapper/binaries/code-wrapper-linux-x64 \
+    /build/lib/code_wrapper/binaries/code-wrapper-linux-x64 \
     /usr/local/bin/code-wrapper
 
 # Ensure binary is executable and verify it works

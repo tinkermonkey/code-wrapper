@@ -51,8 +51,8 @@ pip install py-code-wrapper
 **How it works:**
 1. During `pip install`, the package's `setup.py` runs a download script
 2. The script fetches the latest release from GitHub
-3. Only the binary matching the current platform is included in the wheel
-4. When installed, `code_wrapper.resolve_binary()` finds it in the package directory
+3. The PyPI-distributed wheel includes all four platform binaries for universal deployment
+4. When installed, `code_wrapper.resolve_binary()` finds the matching binary for the current platform
 
 **Binary resolution order:**
 1. `CODE_WRAPPER_BINARY` environment variable (if set)

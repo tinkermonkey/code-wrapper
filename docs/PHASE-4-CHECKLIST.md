@@ -18,13 +18,13 @@ This checklist tracks the completion of Phase 4 requirements and acceptance crit
 ### 2. `py-code-wrapper` can obtain the platform-appropriate compiled binary
 
 - [x] Binary download script created (`py-code-wrapper/scripts/download_binaries.py`)
-  - Downloads from latest GitHub Release
-  - Handles all four platforms
+  - Downloads from GitHub Release with optional version pinning
+  - Platform-aware: downloads only current platform by default
   - Fails gracefully if release not available
 - [x] Setup hook created (`py-code-wrapper/setup.py`)
   - Calls download script before building wheel
   - Includes binaries in package data
-- [x] MANIFEST.in updated to include binaries
+- [x] MANIFEST.in configured to include binaries
 - [x] pyproject.toml configured with package-data
 - [x] Binary resolution order implemented in `code_wrapper/_binary.py`:
   1. `CODE_WRAPPER_BINARY` environment variable

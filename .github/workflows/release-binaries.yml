@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  build-and-release:
+  build:
     strategy:
       matrix:
         include:
@@ -42,6 +42,18 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: dist/${{ matrix.outfile }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-body:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release body comment
+        uses: softprops/action-gh-release@v1
+        with:
           body: |
             ## code-wrapper Binary Release
 
@@ -90,6 +102,5 @@ jobs:
             Verify binary integrity by checking file size after download. GitHub provides SHA checksums in release assets metadata.
           draft: false
           prerelease: false
-          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

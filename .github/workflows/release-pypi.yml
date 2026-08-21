@@ -1,9 +1,9 @@
 name: Release Python Package
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ["Release Binaries"]
+    types: [completed]
 
 jobs:
   build-and-publish:
@@ -26,8 +26,10 @@ jobs:
 
       - name: Build Python package (py-code-wrapper)
         working-directory: ./py-code-wrapper
+        env:
+          CODE_WRAPPER_VERSION: all
         run: |
-          # The setup.py will automatically download binaries from GitHub Releases
+          # The setup.py will automatically download all platform binaries from GitHub Releases
           python -m build
 
       - name: Verify binaries were bundled
@@ -56,11 +58,10 @@ jobs:
           python -m twine upload dist/* --skip-existing
 
       - name: Create PyPI release comment
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           body: |
-            ## Binary Distribution
+            ## Python Package Distribution
 
             **py-code-wrapper** is available on PyPI with bundled binaries:
 
@@ -102,5 +103,6 @@ jobs:
             See [docs/DISTRIBUTION.md](https://github.com/tinkermonkey/code-wrapper/blob/main/docs/DISTRIBUTION.md) for complete distribution documentation.
           draft: false
           prerelease: false
+          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

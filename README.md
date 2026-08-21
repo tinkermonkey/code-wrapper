@@ -139,7 +139,7 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for full design details, interface specs, and use-case mapping.
 
-## Distribution (Phase 4)
+## Distribution
 
 The `code-wrapper` binary is compiled to standalone, platform-specific executables that require **no Node.js runtime**. Multiple distribution channels are available:
 
