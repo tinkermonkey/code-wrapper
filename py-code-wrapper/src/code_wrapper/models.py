@@ -1,12 +1,13 @@
 """Type models for code-wrapper wire protocol events (v1).
 
-Generated from claude-event.v1.schema.json.
+Hand-written models based on the claude-event.v1.schema.json specification.
 All events are Pydantic BaseModel instances, discriminated by the 'type' field.
+Note: models are not auto-generated; ensure they stay in sync with the schema.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -138,18 +139,18 @@ class RawEvent(BaseEvent):
 
 
 # Discriminated union of all event types
-ClaudeEvent = (
-    TextEvent
-    | ThinkingEvent
-    | ToolUseEvent
-    | ToolResultEvent
-    | ProgressEvent
-    | ReadyEvent
-    | RetryEvent
-    | DoneEvent
-    | ErrorEvent
-    | RawEvent
-)
+ClaudeEvent = Union[
+    TextEvent,
+    ThinkingEvent,
+    ToolUseEvent,
+    ToolResultEvent,
+    ProgressEvent,
+    ReadyEvent,
+    RetryEvent,
+    DoneEvent,
+    ErrorEvent,
+    RawEvent,
+]
 
 
 def deserialize_event(data: dict[str, Any]) -> ClaudeEvent:
