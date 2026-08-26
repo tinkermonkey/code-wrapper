@@ -174,6 +174,46 @@ describe('code-wrapper exec binary', () => {
     });
   });
 
+  skipIfNoExec('--version flag', () => {
+    it('outputs version and exits with code 0', async () => {
+      return new Promise((resolve, reject) => {
+        const env = {
+          ...process.env,
+        };
+
+        const proc = spawn('node', [execPath, '--version'], {
+          env,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout!.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        proc.stderr!.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        proc.on('close', (code) => {
+          try {
+            expect(code).toBe(0);
+            const output = stdout.trim();
+            expect(output.length).toBeGreaterThan(0);
+            expect(output).not.toBe('unknown');
+            resolve(undefined);
+          } catch (err) {
+            reject(err);
+          }
+        });
+
+        proc.on('error', reject);
+      });
+    });
+  });
+
   skipIfNoExec('exit codes', () => {
     it('exits with code 0 on successful execution', async () => {
       const result = await spawnBinaryWithFixture(fakeClaudePath, 'claude', 'golden-path');

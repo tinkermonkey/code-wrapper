@@ -24,6 +24,10 @@ interface ExecOptions {
 }
 
 function getVersion(): string {
+  if (process.env.CODE_WRAPPER_VERSION) {
+    return process.env.CODE_WRAPPER_VERSION;
+  }
+
   try {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
@@ -55,6 +59,7 @@ function parseArgs(argv: string[]): ExecOptions {
       case '--version':
         console.log(getVersion());
         process.exit(0);
+        break;
       case '--backend':
         if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.backend = args[++i] as CliBackend;

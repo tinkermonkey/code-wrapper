@@ -56,13 +56,13 @@ jobs:
 
       - name: Build binary for ${{ matrix.target }}
         run: |
-          bun build --compile --target=${{ matrix.target }} src/cli/exec.ts --outfile dist/${{ matrix.outfile }}
+          bun build --compile --target=${{ matrix.target }} --define "process.env.CODE_WRAPPER_VERSION='\"${{ github.ref_name }}\"'" src/cli/exec.ts --outfile dist/${{ matrix.outfile }}
           chmod +x dist/${{ matrix.outfile }}
 
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256
+          sha256sum ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256 || shasum -a 256 ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256
           cat ${{ matrix.outfile }}.sha256
 
       - name: Upload binary to release
@@ -128,7 +128,7 @@ jobs:
 
             ### Checksums
 
-            Verify binary integrity by checking file size after download. GitHub provides SHA checksums in release assets metadata.
+            SHA256 checksum files (`.sha256`) are included for each binary. Verify with: `sha256sum -c code-wrapper-linux-x64.sha256`
           draft: false
           prerelease: false
         env:
