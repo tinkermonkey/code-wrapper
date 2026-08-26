@@ -2,11 +2,8 @@
 
 import hashlib
 import tempfile
-from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 def get_script_path():
@@ -234,39 +231,38 @@ class TestMain:
             ]
         }
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(
-                module, "BINARIES_DIR", Path(tmpdir)
-            ), patch.object(
-                module, "get_release_info", return_value=release_info
-            ), patch.object(
-                module, "get_current_platform", return_value="linux-x64"
-            ), patch(
-                "os.environ.get", return_value="all"
-            ), patch(
-                "urllib.request.urlretrieve"
-            ) as mock_urlretrieve, patch(
-                "urllib.request.urlopen"
-            ) as mock_urlopen:
-                # Setup mocks
-                test_data = b"test binary"
-                expected_checksum = hashlib.sha256(test_data).hexdigest()
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
+            module, "BINARIES_DIR", Path(tmpdir)
+        ), patch.object(
+            module, "get_release_info", return_value=release_info
+        ), patch.object(
+            module, "get_current_platform", return_value="linux-x64"
+        ), patch(
+            "os.environ.get", return_value="all"
+        ), patch(
+            "urllib.request.urlretrieve"
+        ) as mock_urlretrieve, patch(
+            "urllib.request.urlopen"
+        ) as mock_urlopen:
+            # Setup mocks
+            test_data = b"test binary"
+            expected_checksum = hashlib.sha256(test_data).hexdigest()
 
-                def mock_retrieve(url, path):
-                    Path(path).write_bytes(test_data)
+            def mock_retrieve(url, path):
+                Path(path).write_bytes(test_data)
 
-                mock_urlretrieve.side_effect = mock_retrieve
+            mock_urlretrieve.side_effect = mock_retrieve
 
-                mock_response = MagicMock()
-                mock_response.read.return_value = f"{expected_checksum}\n".encode()
-                mock_response.__enter__.return_value = mock_response
-                mock_urlopen.return_value = mock_response
+            mock_response = MagicMock()
+            mock_response.read.return_value = f"{expected_checksum}\n".encode()
+            mock_response.__enter__.return_value = mock_response
+            mock_urlopen.return_value = mock_response
 
-                result = module.main()
+            result = module.main()
 
-                # Should return 1 because not all requested binaries were downloaded
-                # (linux-arm64 has no checksum)
-                assert result == 1
+            # Should return 1 because not all requested binaries were downloaded
+            # (linux-arm64 has no checksum)
+            assert result == 1
 
     def test_main_all_binaries_downloaded(self):
         """Test main returns exit code 0 when all binaries are successfully downloaded."""
@@ -310,35 +306,34 @@ class TestMain:
             ]
         }
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.object(
-                module, "BINARIES_DIR", Path(tmpdir)
-            ), patch.object(
-                module, "get_release_info", return_value=release_info
-            ), patch.object(
-                module, "get_current_platform", return_value="linux-x64"
-            ), patch.dict(
-                "os.environ", {"CODE_WRAPPER_VERSION": "all"}
-            ), patch(
-                "urllib.request.urlretrieve"
-            ) as mock_urlretrieve, patch(
-                "urllib.request.urlopen"
-            ) as mock_urlopen:
-                # Setup mocks
-                test_data = b"test binary"
-                expected_checksum = hashlib.sha256(test_data).hexdigest()
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
+            module, "BINARIES_DIR", Path(tmpdir)
+        ), patch.object(
+            module, "get_release_info", return_value=release_info
+        ), patch.object(
+            module, "get_current_platform", return_value="linux-x64"
+        ), patch.dict(
+            "os.environ", {"CODE_WRAPPER_VERSION": "all"}
+        ), patch(
+            "urllib.request.urlretrieve"
+        ) as mock_urlretrieve, patch(
+            "urllib.request.urlopen"
+        ) as mock_urlopen:
+            # Setup mocks
+            test_data = b"test binary"
+            expected_checksum = hashlib.sha256(test_data).hexdigest()
 
-                def mock_retrieve(url, path):
-                    Path(path).write_bytes(test_data)
+            def mock_retrieve(url, path):
+                Path(path).write_bytes(test_data)
 
-                mock_urlretrieve.side_effect = mock_retrieve
+            mock_urlretrieve.side_effect = mock_retrieve
 
-                mock_response = MagicMock()
-                mock_response.read.return_value = f"{expected_checksum}\n".encode()
-                mock_response.__enter__.return_value = mock_response
-                mock_urlopen.return_value = mock_response
+            mock_response = MagicMock()
+            mock_response.read.return_value = f"{expected_checksum}\n".encode()
+            mock_response.__enter__.return_value = mock_response
+            mock_urlopen.return_value = mock_response
 
-                result = module.main()
+            result = module.main()
 
-                # Should return 0 because all binaries were downloaded
-                assert result == 0
+            # Should return 0 because all binaries were downloaded
+            assert result == 0
