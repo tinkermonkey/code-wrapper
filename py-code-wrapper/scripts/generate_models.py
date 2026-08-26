@@ -15,7 +15,7 @@ from io import StringIO
 
 # Try to import datamodel_code_generator
 try:
-    from datamodel_code_generator.generate import generate, PythonVersion
+    from datamodel_code_generator import generate, PythonVersion
 except ImportError:
     print("Error: datamodel-code-generator not installed", file=sys.stderr)
     print("Install with: pip install datamodel-code-generator", file=sys.stderr)
@@ -44,7 +44,7 @@ try:
         output=output_buffer,
         output_model="pydantic_v2",
         snake_case_field=False,
-        target_python_version=PythonVersion.PY39,
+        target_python_version=PythonVersion.PY_311,
         use_annotated=False,
         use_union_operator=False,
         use_standard_collections=True,

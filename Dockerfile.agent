@@ -45,6 +45,11 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts --include=dev
 
+# Install Python dev dependencies for py-code-wrapper
+COPY py-code-wrapper/pyproject.toml py-code-wrapper/setup.py py-code-wrapper/
+RUN pip install --no-cache-dir "datamodel-code-generator>=0.25.0" \
+    "pytest>=7.0" "pytest-asyncio>=0.21" "pydantic>=2.0" "typing-extensions>=4.0"
+
 # ============================================================================
 # Stage 3.5: Install GitHub Copilot CLI
 # ============================================================================
@@ -70,6 +75,7 @@ RUN claude --version && \
     copilot --version && \
     node --version && \
     npm --version && \
-    npx tsc --version
+    npx tsc --version && \
+    python3 -c "from datamodel_code_generator import generate; print('datamodel-code-generator OK')"
 
 CMD ["/bin/bash"]
