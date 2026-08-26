@@ -56,7 +56,7 @@ try:
         base_class="pydantic.BaseModel",
         collapse_root_models=True,
         enum_field_as_literal=LiteralType.All,
-        formatters=[Formatter.BUILTIN],
+        formatters=[Formatter.BLACK, Formatter.ISORT],
     )
 
     # Create header with instructions
