@@ -124,6 +124,7 @@ class ErrorEvent(BaseEvent):
         "stale_session",
         "parse_error",
         "cli_error",
+        "wire_protocol_error",
         "aborted",
     ] = Field(..., description="Error code discriminator")
     detail: str = Field(..., description="Human-readable error detail")

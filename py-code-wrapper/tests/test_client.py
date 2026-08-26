@@ -420,7 +420,7 @@ class TestExitCodeHandling:
 
     @pytest.mark.asyncio
     async def test_exit_code_3_raises_error(self, client, basic_options):
-        """Exit code 3 should raise CodeWrapperBinaryError."""
+        """Exit code 3 should raise CodeWrapperProtocolError."""
         with patch("code_wrapper.client.resolve_binary") as mock_resolve:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
@@ -432,7 +432,7 @@ class TestExitCodeHandling:
 
                 mock_subprocess.return_value = mock_process
 
-                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                with pytest.raises(CodeWrapperProtocolError) as exc_info:
                     async for _ in client.run(basic_options):
                         pass
 

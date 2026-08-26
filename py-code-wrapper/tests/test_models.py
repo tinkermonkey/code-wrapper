@@ -290,6 +290,21 @@ class TestErrorEvent:
         assert isinstance(event, ErrorEvent)
         assert event.exitCode == 1
 
+    def test_error_event_wire_protocol_error(self):
+        data = {
+            "v": 1,
+            "seq": 1,
+            "timestamp": 1000,
+            "type": "error",
+            "code": "wire_protocol_error",
+            "detail": "Wire protocol version mismatch",
+            "exitCode": 3,
+        }
+        event = deserialize_event(data)
+        assert isinstance(event, ErrorEvent)
+        assert event.code == "wire_protocol_error"
+        assert event.exitCode == 3
+
 
 class TestRawEvent:
     """Test RawEvent as fallback for unknown types."""

@@ -41,7 +41,7 @@ dev = [
     "pytest-asyncio>=0.21",
     "black>=23.0",
     "mypy>=1.0",
-    "datamodel-code-generator>=2.25.0",
+    "datamodel-code-generator>=0.25.0",
 ]
 
 [project.urls]
