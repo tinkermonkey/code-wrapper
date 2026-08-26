@@ -47,7 +47,7 @@ class SessionTracker:
         """
         session_id = self._sessions.get(key)
         is_first = self._first.get(key, True)
-        kwargs = {"is_first_message": is_first}
+        kwargs: _RunKwargs = {"is_first_message": is_first}
         if session_id:
             kwargs["session_id"] = session_id
         return kwargs
