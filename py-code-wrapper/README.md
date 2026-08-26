@@ -38,26 +38,27 @@ asyncio.run(main())
 ### With session resumption
 
 ```python
-from code_wrapper import CodeWrapper, ClientOptions, SessionManager, DoneEvent
+from code_wrapper import CodeWrapper, ClientOptions, SessionTracker, DoneEvent
 
 async def chat(user_id: str, prompt: str):
-    sessions = SessionManager(persist_path="./sessions.json")
+    tracker = SessionTracker()
     
-    # Resume or create new session
-    session = sessions.resume_session(user_id) or sessions.new_session(user_id)
+    # Get session kwargs (session_id and is_first_message for resumption)
+    session_kwargs = tracker.get_run_kwargs(user_id)
     
     options = ClientOptions(
         cwd="/workspace",
         prompt=prompt,
-        session_id=session.cliSessionId,
-        is_first_message=session.isFirst,
+        session_dir="./sessions",        # Binary persists session data here
+        recover_stale_session=True,      # Recover if session is stale
+        **session_kwargs,                # Unpacks session_id and is_first_message
     )
     
     client = CodeWrapper()
     async for event in client.run(options):
         if event.type == "done":
-            # Persist the session ID for next time
-            sessions.record_cli_session_id(user_id, event.sessionId)
+            # Record the session ID for next turn
+            tracker.record_done(user_id, event.sessionId)
         print(f"{event.type}: {event}")
 ```
 
@@ -134,49 +135,52 @@ options = ClientOptions(
 
 ## Session Management
 
-Sessions are persisted to disk and can be resumed across runs:
+Session persistence is **delegated to the binary** — the Python client only tracks session IDs in memory. The binary manages persistence via the `--session-dir` flag.
 
 ```python
-manager = SessionManager(persist_path="./sessions.json")
+from code_wrapper import SessionTracker, CodeWrapper, ClientOptions
 
-# New session
-session = manager.new_session("user-123")
+tracker = SessionTracker()
 
-# Resume if it exists
-session = manager.resume_session("user-123")
-if not session:
-    session = manager.new_session("user-123")
+# On first turn, get_run_kwargs returns {"is_first_message": True}
+# On subsequent turns, it returns {"session_id": "...", "is_first_message": False}
+session_kwargs = tracker.get_run_kwargs("user-123")
 
-# Record the CLI-assigned session ID after a successful run
-manager.record_cli_session_id("user-123", done_event.sessionId)
-
-# Clear a stale session (e.g., on stale_session error)
-manager.clear_session("user-123")
-
-# List all sessions
-sessions = manager.list_sessions()
-
-# Namespace isolation for multi-tenant scenarios
-manager = SessionManager(
-    persist_path="./sessions.json",
-    namespace="app-name"
+options = ClientOptions(
+    cwd="/workspace",
+    prompt="user message",
+    session_dir="/tmp/sessions",      # Binary persists here
+    recover_stale_session=True,       # Auto-recover from stale sessions
+    **session_kwargs,
 )
+
+client = CodeWrapper()
+async for event in client.run(options):
+    if event.type == "done":
+        tracker.record_done("user-123", event.sessionId)  # Record for next turn
+    elif event.type == "error" and event.code == "stale_session":
+        tracker.clear("user-123")     # Clear on stale_session error
+
+# For applications with custom persistence (Redis, database):
+# Skip the tracker and manage session_id/is_first_message yourself
 ```
 
 ## Client Options
 
 ```python
 options = ClientOptions(
-    cwd="/workspace",              # Working directory
-    prompt="test",                 # Prompt text
-    session_id="sess-123",         # Resume this session
-    is_first_message=True,         # --session-id vs --resume
-    idle_timeout=300,              # stdout silence ceiling (s)
-    max_timeout=3600,              # hard wall-clock ceiling (s)
-    skip_permissions=False,        # bypass permission checks
-    agent="my-agent",              # use a specific agent
+    cwd="/workspace",                      # Working directory (required)
+    prompt="test",                         # Prompt text (required)
+    session_id="sess-123",                 # Resume this session (optional)
+    is_first_message=True,                 # --session-id vs --resume (default: True)
+    session_dir="/path/to/sessions",       # Binary's session persistence directory
+    recover_stale_session=True,            # Auto-recover from stale sessions
+    idle_timeout=300,                      # stdout silence ceiling (s)
+    max_timeout=3600,                      # hard wall-clock ceiling (s)
+    skip_permissions=False,                # bypass permission checks
+    agent="my-agent",                      # use a specific agent
     mcp_config_path="/path/to/config.json",  # MCP configuration
-    backend="claude",              # "claude" or "copilot"
+    backend="claude",                      # "claude" or "copilot"
 )
 ```
 

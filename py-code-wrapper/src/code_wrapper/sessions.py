@@ -7,6 +7,15 @@ The Python client only extracts and tracks session IDs from events.
 
 from __future__ import annotations
 
+from typing import TypedDict
+
+
+class _RunKwargs(TypedDict, total=False):
+    """Type-safe dict for session-related kwargs passed to run()."""
+
+    session_id: str
+    is_first_message: bool
+
 
 class SessionTracker:
     """Minimal in-memory tracker for session IDs.
@@ -26,7 +35,7 @@ class SessionTracker:
         self._sessions: dict[str, str] = {}  # key -> cli_session_id
         self._first: dict[str, bool] = {}  # key -> is_first
 
-    def get_run_kwargs(self, key: str) -> dict:
+    def get_run_kwargs(self, key: str) -> _RunKwargs:
         """Get session_id and is_first_message for a run() call.
 
         Args:
