@@ -15,9 +15,7 @@ def import_download_module():
     """Import the download_binaries module dynamically."""
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location(
-        "download_binaries", get_script_path()
-    )
+    spec = importlib.util.spec_from_file_location("download_binaries", get_script_path())
     if spec and spec.loader:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -42,9 +40,7 @@ class TestVerifyChecksum:
             checksum_content = f"{expected_checksum}\n"
 
             try:
-                with patch(
-                    "urllib.request.urlopen"
-                ) as mock_urlopen:
+                with patch("urllib.request.urlopen") as mock_urlopen:
                     mock_response = MagicMock()
                     mock_response.read.return_value = checksum_content.encode()
                     mock_response.__enter__.return_value = mock_response
@@ -69,9 +65,7 @@ class TestVerifyChecksum:
             wrong_checksum = "0" * 64
 
             try:
-                with patch(
-                    "urllib.request.urlopen"
-                ) as mock_urlopen:
+                with patch("urllib.request.urlopen") as mock_urlopen:
                     mock_response = MagicMock()
                     mock_response.read.return_value = f"{wrong_checksum}\n".encode()
                     mock_response.__enter__.return_value = mock_response
@@ -94,9 +88,7 @@ class TestVerifyChecksum:
             tmp_file.flush()
 
             try:
-                with patch(
-                    "urllib.request.urlopen"
-                ) as mock_urlopen:
+                with patch("urllib.request.urlopen") as mock_urlopen:
                     mock_response = MagicMock()
                     mock_response.read.return_value = b""
                     mock_response.__enter__.return_value = mock_response
@@ -119,10 +111,9 @@ class TestVerifyChecksum:
             tmp_file.flush()
 
             try:
-                with patch(
-                    "urllib.request.urlopen"
-                ) as mock_urlopen:
+                with patch("urllib.request.urlopen") as mock_urlopen:
                     import urllib.error
+
                     mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
 
                     result = module.verify_checksum(tmp_path, "http://example.com/checksum.sha256")
@@ -136,9 +127,7 @@ class TestVerifyChecksum:
 
         nonexistent_path = Path("/nonexistent/path/to/binary")
 
-        with patch(
-            "urllib.request.urlopen"
-        ) as mock_urlopen:
+        with patch("urllib.request.urlopen") as mock_urlopen:
             expected_checksum = "0" * 64
             mock_response = MagicMock()
             mock_response.read.return_value = f"{expected_checksum}\n".encode()
@@ -184,9 +173,10 @@ class TestDownloadBinary:
                 """Write test data to the output file."""
                 Path(path).write_bytes(test_data)
 
-            with patch("urllib.request.urlretrieve", side_effect=mock_urlretrieve), patch(
-                "urllib.request.urlopen"
-            ) as mock_urlopen:
+            with (
+                patch("urllib.request.urlretrieve", side_effect=mock_urlretrieve),
+                patch("urllib.request.urlopen") as mock_urlopen,
+            ):
                 mock_response = MagicMock()
                 mock_response.read.return_value = f"{expected_checksum}\n".encode()
                 mock_response.__enter__.return_value = mock_response
@@ -231,19 +221,15 @@ class TestMain:
             ]
         }
 
-        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
-            module, "BINARIES_DIR", Path(tmpdir)
-        ), patch.object(
-            module, "get_release_info", return_value=release_info
-        ), patch.object(
-            module, "get_current_platform", return_value="linux-x64"
-        ), patch(
-            "os.environ.get", return_value="all"
-        ), patch(
-            "urllib.request.urlretrieve"
-        ) as mock_urlretrieve, patch(
-            "urllib.request.urlopen"
-        ) as mock_urlopen:
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.object(module, "BINARIES_DIR", Path(tmpdir)),
+            patch.object(module, "get_release_info", return_value=release_info),
+            patch.object(module, "get_current_platform", return_value="linux-x64"),
+            patch("os.environ.get", return_value="all"),
+            patch("urllib.request.urlretrieve") as mock_urlretrieve,
+            patch("urllib.request.urlopen") as mock_urlopen,
+        ):
             # Setup mocks
             test_data = b"test binary"
             expected_checksum = hashlib.sha256(test_data).hexdigest()
@@ -306,19 +292,15 @@ class TestMain:
             ]
         }
 
-        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
-            module, "BINARIES_DIR", Path(tmpdir)
-        ), patch.object(
-            module, "get_release_info", return_value=release_info
-        ), patch.object(
-            module, "get_current_platform", return_value="linux-x64"
-        ), patch.dict(
-            "os.environ", {"CODE_WRAPPER_VERSION": "all"}
-        ), patch(
-            "urllib.request.urlretrieve"
-        ) as mock_urlretrieve, patch(
-            "urllib.request.urlopen"
-        ) as mock_urlopen:
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch.object(module, "BINARIES_DIR", Path(tmpdir)),
+            patch.object(module, "get_release_info", return_value=release_info),
+            patch.object(module, "get_current_platform", return_value="linux-x64"),
+            patch.dict("os.environ", {"CODE_WRAPPER_VERSION": "all"}),
+            patch("urllib.request.urlretrieve") as mock_urlretrieve,
+            patch("urllib.request.urlopen") as mock_urlopen,
+        ):
             # Setup mocks
             test_data = b"test binary"
             expected_checksum = hashlib.sha256(test_data).hexdigest()
