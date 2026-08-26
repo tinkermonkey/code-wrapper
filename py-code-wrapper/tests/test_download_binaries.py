@@ -226,7 +226,7 @@ class TestMain:
             patch.object(module, "BINARIES_DIR", Path(tmpdir)),
             patch.object(module, "get_release_info", return_value=release_info),
             patch.object(module, "get_current_platform", return_value="linux-x64"),
-            patch("os.environ.get", return_value="all"),
+            patch.dict("os.environ", {"CODE_WRAPPER_VERSION": "all"}),
             patch("urllib.request.urlretrieve") as mock_urlretrieve,
             patch("urllib.request.urlopen") as mock_urlopen,
         ):
