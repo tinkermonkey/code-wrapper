@@ -207,12 +207,19 @@ class CodeWrapper:
                 except asyncio.CancelledError:
                     pass
 
+            # Track if we're about to terminate the process ourselves
+            terminated_by_cleanup = (
+                self._process is not None and self._process.returncode is None
+            )
+
             # Clean up process
             if self._process:
                 await self._cleanup_process()
 
-            # Only raise exit code errors if no exception was already raised
-            if exception_raised is None and self._process:
+            # Only raise exit code errors if:
+            # 1. No exception was already raised
+            # 2. We didn't terminate the process ourselves (e.g., GeneratorExit break)
+            if exception_raised is None and self._process and not terminated_by_cleanup:
                 if self._process.returncode == 2:
                     raise CodeWrapperBinaryError("Binary exited with code 2 (fatal error)")
                 elif self._process.returncode == 3:

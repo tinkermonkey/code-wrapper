@@ -672,3 +672,35 @@ class TestExceptionPropagation:
 
                 # Should raise protocol error, not exit code error
                 assert "version mismatch" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_consumer_break_does_not_raise(self, client, basic_options):
+        """Breaking out of async for should not raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                # Process is still running (returncode is None before cleanup)
+                ready_event = {"v": 1, "seq": 0, "timestamp": 0, "type": "ready", "sessionId": "s1"}
+                text_event = {"v": 1, "seq": 1, "timestamp": 1, "type": "text", "text": "hello"}
+                events = [
+                    json.dumps(ready_event).encode() + b"\n",
+                    json.dumps(text_event).encode() + b"\n",
+                    b"",  # End of stream
+                ]
+                mock_process.stdout.readline = AsyncMock(side_effect=events)
+                # Configure stderr to return empty immediately so drain task exits
+                mock_process.stderr.read = AsyncMock(return_value=b"")
+                mock_subprocess.return_value = mock_process
+
+                # Should not raise when breaking early
+                event_count = 0
+                async for event in client.run(basic_options):
+                    event_count += 1
+                    if event_count == 1:
+                        break
+
+                # If we get here, no exception was raised
+                assert event_count == 1
