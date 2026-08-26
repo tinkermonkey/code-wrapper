@@ -127,12 +127,12 @@ def verify_checksum(file_path: Path, checksum_url: str) -> bool:
 
 
 def download_binary(url: str, output_path: Path, checksum_url: str | None = None) -> bool:
-    """Download a single binary file with optional checksum verification.
+    """Download a single binary file with checksum verification.
 
     Args:
         url: GitHub release asset URL
         output_path: Where to save the binary
-        checksum_url: Optional URL to download checksum from
+        checksum_url: URL to download checksum from (required)
 
     Returns:
         True if successful and verified, False otherwise
@@ -141,10 +141,17 @@ def download_binary(url: str, output_path: Path, checksum_url: str | None = None
         print(f"Downloading {output_path.name}...", file=sys.stderr)
         urllib.request.urlretrieve(url, output_path)
 
-        if checksum_url:
-            if not verify_checksum(output_path, checksum_url):
-                output_path.unlink(missing_ok=True)
-                return False
+        if not checksum_url:
+            print(
+                f"Failed to download {output_path.name}: no checksum file found for integrity verification",
+                file=sys.stderr,
+            )
+            output_path.unlink(missing_ok=True)
+            return False
+
+        if not verify_checksum(output_path, checksum_url):
+            output_path.unlink(missing_ok=True)
+            return False
 
         # Make executable
         output_path.chmod(0o755)
@@ -225,6 +232,17 @@ def main():
     if downloaded_count == 0:
         print(
             f"Error: No binaries were downloaded from release '{release_version}'.",
+            file=sys.stderr,
+        )
+        print(
+            "The package will still work if you provide CODE_WRAPPER_BINARY env var or 'code-wrapper' in PATH.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if downloaded_count != len(binary_names):
+        print(
+            f"Error: Failed to download all requested binaries. Downloaded {downloaded_count}/{len(binary_names)} from release '{release_version}'.",
             file=sys.stderr,
         )
         print(
