@@ -151,8 +151,6 @@ async function main(): Promise<void> {
 
   const proc = new CliProcess(execOpts.backend);
 
-  // Register signal handlers to forward SIGTERM/SIGINT to the child process group,
-  // ensuring the child is not orphaned if the binary is terminated.
   const handleTerminationSignal = (): void => {
     proc.kill(3_000).catch(() => {
       /* already exiting */
@@ -185,8 +183,8 @@ async function main(): Promise<void> {
       }
     }
   } finally {
-    process.removeAllListeners('SIGTERM');
-    process.removeAllListeners('SIGINT');
+    process.removeListener('SIGTERM', handleTerminationSignal);
+    process.removeListener('SIGINT', handleTerminationSignal);
   }
 
   process.exit(errorEventEmitted ? 1 : 0);
