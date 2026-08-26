@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import signal
 from collections.abc import AsyncGenerator
 
 from ._binary import CodeWrapperBinaryError, resolve_binary
 from .models import ClaudeEvent, ErrorEvent, deserialize_event
+
+logger = logging.getLogger(__name__)
 
 
 class CodeWrapperProtocolError(Exception):
@@ -197,10 +200,7 @@ class CodeWrapper:
         try:
             # Try SIGTERM on the process group
             if self._process.returncode is None:
-                try:
-                    pgid = os.getpgid(self._process.pid)
-                    os.killpg(pgid, signal.SIGTERM)
-                except ProcessLookupError:
+                if not self._signal_process_group(signal.SIGTERM):
                     return
 
                 # Wait up to 3 seconds for graceful shutdown
@@ -208,10 +208,7 @@ class CodeWrapper:
                     await asyncio.wait_for(self._process.wait(), timeout=3.0)
                 except asyncio.TimeoutError:
                     # SIGTERM didn't work, escalate to SIGKILL on the process group
-                    try:
-                        pgid = os.getpgid(self._process.pid)
-                        os.killpg(pgid, signal.SIGKILL)
-                    except ProcessLookupError:
+                    if not self._signal_process_group(signal.SIGKILL):
                         return
 
                     try:
@@ -222,6 +219,63 @@ class CodeWrapper:
         except ProcessLookupError:
             # Process already dead
             pass
+
+    def _signal_process_group(self, sig: int) -> bool:
+        """Send `sig` to the spawned process's group, guarding against bogus pids.
+
+        os.getpgid()/os.killpg() coerce their pid argument via the __index__
+        protocol, so a non-integer pid (e.g. an unconfigured test double)
+        silently resolves to some unrelated value instead of raising —
+        os.getpgid(unconfigured_mock.pid) resolves to 1 by default. Left
+        unguarded, that can signal PID 1's own process group (the whole
+        surrounding container/session) rather than the intended child.
+
+        `_preexec_fn` always starts the real child in its own fresh process
+        group via os.setpgrp(), so a legitimate spawned child always
+        satisfies pgid == pid. Anything else -- a non-integer/non-positive
+        pid, or a pid whose resolved group doesn't match it -- means this
+        isn't our spawned child and must not be signaled, even if it
+        happens to resolve to some other live process group (a weaker
+        "don't signal our own group" check would miss this: PID 1's group
+        in a container is generally *not* the caller's own group, so that
+        check alone would not have caught the original bug).
+
+        Returns False (no signal sent) if there is no process, the process
+        is already gone, or the pid/pgid don't check out. The latter two
+        "bad shape" cases are logged as warnings since they indicate a bug
+        rather than a normal exit.
+        """
+        if not self._process:
+            return False
+
+        pid = self._process.pid
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+            logger.warning(
+                "_signal_process_group: process.pid is not a valid pid (%r); "
+                "refusing to signal, child process may be left running unreaped",
+                pid,
+            )
+            return False
+
+        try:
+            pgid = os.getpgid(pid)
+        except ProcessLookupError:
+            # Process already exited -- nothing to signal, not a bug.
+            return False
+
+        if pgid != pid:
+            logger.warning(
+                "_signal_process_group: resolved pgid %s for pid %s does not "
+                "match pid; refusing to signal a process group we did not "
+                "spawn (expected the child to be its own group leader via "
+                "_preexec_fn)",
+                pgid,
+                pid,
+            )
+            return False
+
+        os.killpg(pgid, sig)
+        return True
 
     @staticmethod
     async def _read_lines(reader: asyncio.StreamReader) -> AsyncGenerator[str, None]:
