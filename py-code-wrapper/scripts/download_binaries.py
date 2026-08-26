@@ -132,22 +132,21 @@ def download_binary(url: str, output_path: Path, checksum_url: str | None = None
     Args:
         url: GitHub release asset URL
         output_path: Where to save the binary
-        checksum_url: URL to download checksum from (required)
+        checksum_url: URL to download checksum from (optional — download is rejected if not provided)
 
     Returns:
         True if successful and verified, False otherwise
     """
+    if not checksum_url:
+        print(
+            f"Failed to download {output_path.name}: no checksum file found for integrity verification",
+            file=sys.stderr,
+        )
+        return False
+
     try:
         print(f"Downloading {output_path.name}...", file=sys.stderr)
         urllib.request.urlretrieve(url, output_path)
-
-        if not checksum_url:
-            print(
-                f"Failed to download {output_path.name}: no checksum file found for integrity verification",
-                file=sys.stderr,
-            )
-            output_path.unlink(missing_ok=True)
-            return False
 
         if not verify_checksum(output_path, checksum_url):
             output_path.unlink(missing_ok=True)
