@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,13 @@ def create_mock_process():
     """Create a properly configured mock process."""
     mock_process = AsyncMock()
     mock_process.returncode = None
+    # Real int, guaranteed not to belong to any process on the host: an
+    # unconfigured AsyncMock attribute would otherwise coerce to 1 via
+    # __index__, and CodeWrapper._cleanup_process()'s real (unmocked)
+    # os.getpgid/os.killpg calls would then signal process group 1 --
+    # i.e. the whole surrounding container -- when the test's async
+    # generator is torn down. See client.py's _signal_process_group guard.
+    mock_process.pid = 999999999
     mock_stdin = AsyncMock()
     mock_stdin.write = MagicMock()
     mock_stdin.drain = AsyncMock()
@@ -261,3 +269,58 @@ class TestClaudeCodeEnvDeletion:
 
         finally:
             del os.environ["CLAUDECODE"]
+
+
+class TestCleanupProcessGuards:
+    """Test that _cleanup_process never signals a bogus or unrelated process group.
+
+    Regression coverage for a bug where an unconfigured mock's `.pid`
+    (a non-integer) was silently coerced by os.getpgid()/os.killpg() via
+    the __index__ protocol, resolving to process group 1 and sending a
+    real SIGTERM to the surrounding container. See client.py's
+    _signal_process_group.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cleanup_skips_non_integer_pid(self, client):
+        """A non-integer pid must never reach os.getpgid/os.killpg."""
+        client._process = create_mock_process()
+        client._process.pid = AsyncMock()  # not a real int, e.g. an unconfigured mock
+
+        with patch("code_wrapper.client.os.getpgid") as mock_getpgid:
+            with patch("code_wrapper.client.os.killpg") as mock_killpg:
+                await client._cleanup_process()
+
+        mock_getpgid.assert_not_called()
+        mock_killpg.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_skips_own_process_group(self, client):
+        """A resolved pgid matching our own group must never be signaled."""
+        client._process = create_mock_process()
+        client._process.pid = os.getpid()
+
+        with patch("code_wrapper.client.os.getpgid", return_value=os.getpgid(0)):
+            with patch("code_wrapper.client.os.killpg") as mock_killpg:
+                await client._cleanup_process()
+
+        mock_killpg.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_signals_valid_child_pgid(self, client):
+        """A real child pid in its own process group is still signaled normally."""
+        client._process = create_mock_process()
+        client._process.pid = os.getpid()
+        client._process.wait = AsyncMock(return_value=0)
+
+        own_pgid = os.getpgid(0)
+        child_pgid = own_pgid + 12345  # guaranteed different from our own group
+
+        def fake_getpgid(pid):
+            return own_pgid if pid == 0 else child_pgid
+
+        with patch("code_wrapper.client.os.getpgid", side_effect=fake_getpgid):
+            with patch("code_wrapper.client.os.killpg") as mock_killpg:
+                await client._cleanup_process()
+
+        mock_killpg.assert_called_once_with(child_pgid, signal.SIGTERM)

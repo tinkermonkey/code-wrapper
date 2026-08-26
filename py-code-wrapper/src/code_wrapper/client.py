@@ -197,10 +197,7 @@ class CodeWrapper:
         try:
             # Try SIGTERM on the process group
             if self._process.returncode is None:
-                try:
-                    pgid = os.getpgid(self._process.pid)
-                    os.killpg(pgid, signal.SIGTERM)
-                except ProcessLookupError:
+                if not self._signal_process_group(signal.SIGTERM):
                     return
 
                 # Wait up to 3 seconds for graceful shutdown
@@ -208,10 +205,7 @@ class CodeWrapper:
                     await asyncio.wait_for(self._process.wait(), timeout=3.0)
                 except asyncio.TimeoutError:
                     # SIGTERM didn't work, escalate to SIGKILL on the process group
-                    try:
-                        pgid = os.getpgid(self._process.pid)
-                        os.killpg(pgid, signal.SIGKILL)
-                    except ProcessLookupError:
+                    if not self._signal_process_group(signal.SIGKILL):
                         return
 
                     try:
@@ -222,6 +216,40 @@ class CodeWrapper:
         except ProcessLookupError:
             # Process already dead
             pass
+
+    def _signal_process_group(self, sig: int) -> bool:
+        """Send `sig` to the spawned process's group, guarding against bogus pids.
+
+        os.getpgid()/os.killpg() coerce their pid argument via the __index__
+        protocol, so a non-integer pid (e.g. an unconfigured test double)
+        silently resolves to some unrelated value instead of raising —
+        os.getpgid(unconfigured_mock.pid) resolves to 1 by default. Left
+        unguarded, that can signal PID 1's own process group (the whole
+        surrounding container/session) rather than the intended child.
+
+        Returns False (no signal sent) if there is no process, the pid isn't
+        a real integer, the process is already gone, or the resolved group
+        matches our own — that last case can only happen for a bogus pid,
+        since the child is always spawned into its own fresh group via
+        `_preexec_fn`.
+        """
+        if not self._process:
+            return False
+
+        pid = self._process.pid
+        if not isinstance(pid, int):
+            return False
+
+        try:
+            pgid = os.getpgid(pid)
+        except ProcessLookupError:
+            return False
+
+        if pgid == os.getpgid(0):
+            return False
+
+        os.killpg(pgid, sig)
+        return True
 
     @staticmethod
     async def _read_lines(reader: asyncio.StreamReader) -> AsyncGenerator[str, None]:
