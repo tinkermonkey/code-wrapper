@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import signal
 from collections.abc import AsyncGenerator
 
 from ._binary import CodeWrapperBinaryError, resolve_binary
 from .models import ClaudeEvent, ErrorEvent, deserialize_event
+
+logger = logging.getLogger(__name__)
 
 
 class CodeWrapperProtocolError(Exception):
@@ -227,25 +230,48 @@ class CodeWrapper:
         unguarded, that can signal PID 1's own process group (the whole
         surrounding container/session) rather than the intended child.
 
-        Returns False (no signal sent) if there is no process, the pid isn't
-        a real integer, the process is already gone, or the resolved group
-        matches our own — that last case can only happen for a bogus pid,
-        since the child is always spawned into its own fresh group via
-        `_preexec_fn`.
+        `_preexec_fn` always starts the real child in its own fresh process
+        group via os.setpgrp(), so a legitimate spawned child always
+        satisfies pgid == pid. Anything else -- a non-integer/non-positive
+        pid, or a pid whose resolved group doesn't match it -- means this
+        isn't our spawned child and must not be signaled, even if it
+        happens to resolve to some other live process group (a weaker
+        "don't signal our own group" check would miss this: PID 1's group
+        in a container is generally *not* the caller's own group, so that
+        check alone would not have caught the original bug).
+
+        Returns False (no signal sent) if there is no process, the process
+        is already gone, or the pid/pgid don't check out. The latter two
+        "bad shape" cases are logged as warnings since they indicate a bug
+        rather than a normal exit.
         """
         if not self._process:
             return False
 
         pid = self._process.pid
-        if not isinstance(pid, int):
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+            logger.warning(
+                "_signal_process_group: process.pid is not a valid pid (%r); "
+                "refusing to signal, child process may be left running unreaped",
+                pid,
+            )
             return False
 
         try:
             pgid = os.getpgid(pid)
         except ProcessLookupError:
+            # Process already exited -- nothing to signal, not a bug.
             return False
 
-        if pgid == os.getpgid(0):
+        if pgid != pid:
+            logger.warning(
+                "_signal_process_group: resolved pgid %s for pid %s does not "
+                "match pid; refusing to signal a process group we did not "
+                "spawn (expected the child to be its own group leader via "
+                "_preexec_fn)",
+                pgid,
+                pid,
+            )
             return False
 
         os.killpg(pgid, sig)
