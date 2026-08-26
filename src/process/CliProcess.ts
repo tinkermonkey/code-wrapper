@@ -32,10 +32,17 @@ export class CliProcess {
 
   private killProcessGroup(proc: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
     if (proc.pid == null) return;
-    if (process.platform === 'win32') {
-      process.kill(proc.pid, signal);
-    } else {
-      process.kill(-proc.pid, signal);
+    try {
+      if (process.platform === 'win32') {
+        process.kill(proc.pid, signal);
+      } else {
+        process.kill(-proc.pid, signal);
+      }
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== 'ESRCH') {
+        throw err;
+      }
     }
   }
 

@@ -150,26 +150,43 @@ async function main(): Promise<void> {
   };
 
   const proc = new CliProcess(execOpts.backend);
+
+  // Register signal handlers to forward SIGTERM/SIGINT to the child process group,
+  // ensuring the child is not orphaned if the binary is terminated.
+  const handleTerminationSignal = (): void => {
+    proc.kill(3_000).catch(() => {
+      /* already exiting */
+    });
+  };
+
+  process.on('SIGTERM', handleTerminationSignal);
+  process.on('SIGINT', handleTerminationSignal);
+
   const eventGenerator = execOpts.recoverStaleSession && sessionManager
     ? runWithRecovery(proc, sessionManager, execOpts.sessionId || 'default', processOpts)
     : proc.run(processOpts);
 
-  for await (const event of eventGenerator) {
-    seq = Math.max(seq + 1, event.seq);
+  try {
+    for await (const event of eventGenerator) {
+      seq = Math.max(seq + 1, event.seq);
 
-    if (event.type === 'error') {
-      errorEventEmitted = true;
+      if (event.type === 'error') {
+        errorEventEmitted = true;
+      }
+
+      console.log(JSON.stringify({
+        v: 1,
+        ...event,
+        seq,
+      }));
+
+      if (event.type === 'done' && sessionManager && event.sessionId) {
+        sessionManager.recordCliSessionId(execOpts.sessionId || 'default', event.sessionId);
+      }
     }
-
-    console.log(JSON.stringify({
-      v: 1,
-      ...event,
-      seq,
-    }));
-
-    if (event.type === 'done' && sessionManager && event.sessionId) {
-      sessionManager.recordCliSessionId(execOpts.sessionId || 'default', event.sessionId);
-    }
+  } finally {
+    process.removeAllListeners('SIGTERM');
+    process.removeAllListeners('SIGINT');
   }
 
   process.exit(errorEventEmitted ? 1 : 0);

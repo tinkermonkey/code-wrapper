@@ -134,15 +134,6 @@ class CodeWrapper:
         except FileNotFoundError as e:
             raise CodeWrapperBinaryError(f"Failed to spawn binary: {e}") from e
 
-        # Write prompt to stdin and close it
-        try:
-            if self._process.stdin:
-                self._process.stdin.write(options.prompt.encode("utf-8"))
-                await self._process.stdin.drain()
-                self._process.stdin.close()
-        except (BrokenPipeError, OSError) as e:
-            raise CodeWrapperBinaryError(f"Failed to write prompt: {e}") from e
-
         # Drain stderr in background to prevent deadlock
         stderr_task = None
         if self._process.stderr:
@@ -152,6 +143,15 @@ class CodeWrapper:
         first_event = True
         exception_raised = None
         try:
+            # Write prompt to stdin and close it
+            try:
+                if self._process.stdin:
+                    self._process.stdin.write(options.prompt.encode("utf-8"))
+                    await self._process.stdin.drain()
+                    self._process.stdin.close()
+            except (BrokenPipeError, OSError) as e:
+                raise CodeWrapperBinaryError(f"Failed to write prompt: {e}") from e
+
             if self._process.stdout:
                 async for line in self._read_lines(self._process.stdout):
                     if not line.strip():
