@@ -21,23 +21,24 @@ Example:
 
     asyncio.run(main())
 
-For session resumption:
-    from code_wrapper import SessionManager
+For session resumption (with binary-managed persistence):
+    from code_wrapper import CodeWrapper, ClientOptions, SessionTracker
 
-    sessions = SessionManager(persist_path="./sessions.json")
-    session = sessions.resume_session("user-123") or sessions.new_session("user-123")
+    tracker = SessionTracker()
+    session_kwargs = tracker.get_run_kwargs("user-123")
 
     options = ClientOptions(
         cwd="/workspace",
         prompt="Continue from before",
-        session_id=session.cliSessionId,
-        is_first_message=session.isFirst,
+        session_dir="./sessions",
+        recover_stale_session=True,
+        **session_kwargs
     )
 
-    # ... run client ...
-
-    # After receiving DoneEvent
-    sessions.record_cli_session_id("user-123", done_event.sessionId)
+    client = CodeWrapper()
+    async for event in client.run(options):
+        if event.type == "done":
+            tracker.record_done("user-123", event.sessionId)
 """
 
 __version__ = "0.1.0"
@@ -69,14 +70,7 @@ from .models import (
     Usage,
     deserialize_event,
 )
-from .sessions import (
-    FileStore,
-    ISessionStore,
-    MemoryStore,
-    Session,
-    SessionManager,
-    create_session_store,
-)
+from .sessions import SessionTracker
 
 __all__ = [
     "BaseEvent",
@@ -89,22 +83,17 @@ __all__ = [
     "CodeWrapperProtocolError",
     "DoneEvent",
     "ErrorEvent",
-    "FileStore",
-    "ISessionStore",
-    "MemoryStore",
     "ProgressEvent",
     "RawEvent",
     "ReadyEvent",
     "RetryEvent",
     # Sessions
-    "Session",
-    "SessionManager",
+    "SessionTracker",
     "TextEvent",
     "ThinkingEvent",
     "ToolResultEvent",
     "ToolUseEvent",
     "Usage",
-    "create_session_store",
     "deserialize_event",
     # Binary
     "resolve_binary",

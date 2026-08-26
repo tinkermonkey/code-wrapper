@@ -40,6 +40,8 @@ class ClientOptions:
         agent: str | None = None,
         mcp_config_path: str | None = None,
         backend: str = "claude",
+        session_dir: str | None = None,
+        recover_stale_session: bool = False,
     ):
         self.cwd = cwd
         self.prompt = prompt
@@ -51,6 +53,8 @@ class ClientOptions:
         self.agent = agent
         self.mcp_config_path = mcp_config_path
         self.backend = backend
+        self.session_dir = session_dir
+        self.recover_stale_session = recover_stale_session
 
 
 class CodeWrapper:
@@ -102,6 +106,12 @@ class CodeWrapper:
                 args.extend(["--session-id", options.session_id])
             else:
                 args.extend(["--resume", options.session_id])
+
+        if options.session_dir:
+            args.extend(["--session-dir", options.session_dir])
+
+        if options.recover_stale_session:
+            args.append("--recover-stale-session")
 
         args.extend(["--idle-timeout", str(options.idle_timeout)])
         args.extend(["--max-timeout", str(options.max_timeout)])

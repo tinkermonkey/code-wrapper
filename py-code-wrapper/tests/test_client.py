@@ -241,6 +241,53 @@ class TestBinaryOptions:
                 call_args = mock_subprocess.call_args
                 assert "--resume" in call_args[0]
 
+    @pytest.mark.asyncio
+    async def test_session_dir_passed_to_binary(self, client, basic_options):
+        """Should pass --session-dir to binary when set."""
+        basic_options.session_dir = "/tmp/sessions"
+
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                async for _ in client.run(basic_options):
+                    pass
+
+                # Check that --session-dir was passed
+                call_args = mock_subprocess.call_args
+                args = call_args[0]
+                assert "--session-dir" in args
+                idx = args.index("--session-dir")
+                assert args[idx + 1] == "/tmp/sessions"
+
+    @pytest.mark.asyncio
+    async def test_recover_stale_session_passed_to_binary(self, client, basic_options):
+        """Should pass --recover-stale-session to binary when set."""
+        basic_options.recover_stale_session = True
+
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                async for _ in client.run(basic_options):
+                    pass
+
+                # Check that --recover-stale-session was passed
+                call_args = mock_subprocess.call_args
+                assert "--recover-stale-session" in call_args[0]
+
 
 class TestClaudeCodeEnvDeletion:
     """Test that CLAUDECODE env var is deleted."""
