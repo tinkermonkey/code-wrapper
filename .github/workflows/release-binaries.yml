@@ -6,7 +6,28 @@ on:
       - 'v*'
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate schema
+        run: npm run generate-schema
+
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+
   build:
+    needs: test
     strategy:
       matrix:
         include:
