@@ -208,9 +208,7 @@ class CodeWrapper:
                     pass
 
             # Track if we're about to terminate the process ourselves
-            terminated_by_cleanup = (
-                self._process is not None and self._process.returncode is None
-            )
+            terminated_by_cleanup = self._process is not None and self._process.returncode is None
 
             # Clean up process
             if self._process:
