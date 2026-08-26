@@ -8,6 +8,13 @@ import { SessionManager } from '../sessions/SessionManager.js';
 import { runWithRecovery } from '../process/recovery.js';
 import type { CliBackend, ProcessOptions } from '../process/types.js';
 
+class WireProtocolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WireProtocolError';
+  }
+}
+
 interface ExecOptions {
   backend: CliBackend;
   cwd: string;
@@ -193,11 +200,17 @@ async function main(): Promise<void> {
         errorEventEmitted = true;
       }
 
-      console.log(JSON.stringify({
+      const outputEvent = {
         v: 1,
         ...event,
         seq,
-      }));
+      };
+
+      if (typeof outputEvent.v !== 'number' || outputEvent.v !== 1) {
+        throw new WireProtocolError(`Invalid wire protocol version: ${outputEvent.v}`);
+      }
+
+      console.log(JSON.stringify(outputEvent));
 
       if (event.type === 'done' && sessionManager && event.sessionId) {
         sessionManager.recordCliSessionId(execOpts.sessionId || 'default', event.sessionId);
@@ -213,6 +226,12 @@ async function main(): Promise<void> {
 
 main().catch(err => {
   const errorMsg = err instanceof Error ? err.message : String(err);
+
+  if (err instanceof WireProtocolError) {
+    console.error(`Wire protocol error: ${errorMsg}`);
+    process.exit(3);
+  }
+
   console.error(`Fatal error: ${errorMsg}`);
   if (err instanceof Error && err.stack) {
     console.error(err.stack);

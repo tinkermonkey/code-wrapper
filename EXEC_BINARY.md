@@ -111,9 +111,11 @@ code-wrapper exec \
 | **0** | Clean completion | DoneEvent was emitted; session finished normally |
 | **1** | CLI error | ErrorEvent was emitted before exit (e.g., rate limit, spawn error) |
 | **2** | Fatal error | Unexpected exception during initialization or event processing |
+| **3** | Wire protocol error | Internal binary protocol violation (programmer bug) |
 
 The Python client (`py-code-wrapper`) translates exit codes into exceptions:
 - Code 2 → `CodeWrapperBinaryError`
+- Code 3 → `CodeWrapperProtocolError`
 
 ## Process Group Management
 

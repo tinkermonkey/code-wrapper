@@ -411,6 +411,7 @@
         "stale_session",
         "parse_error",
         "cli_error",
+        "wire_protocol_error",
         "aborted"
       ]
     },

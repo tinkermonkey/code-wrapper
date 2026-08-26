@@ -221,7 +221,7 @@ class CodeWrapper:
                 if self._process.returncode == 2:
                     raise CodeWrapperBinaryError("Binary exited with code 2 (fatal error)")
                 elif self._process.returncode == 3:
-                    raise CodeWrapperBinaryError("Binary exited with code 3 (fatal error)")
+                    raise CodeWrapperProtocolError("Binary exited with code 3 (wire protocol error)")
                 elif self._process.returncode is not None and self._process.returncode != 0:
                     raise CodeWrapperBinaryError(
                         f"Binary exited with code {self._process.returncode}"

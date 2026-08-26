@@ -33,6 +33,26 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+          cache: pip
+
+      - name: Generate Python models
+        run: |
+          cd py-code-wrapper
+          pip install -e ".[dev]"
+          python scripts/generate_models.py
+
+      - name: Check Python models drift
+        run: |
+          cd py-code-wrapper
+          git diff --exit-code src/code_wrapper/models.py || (
+            echo "❌ Python models have drifted from schema"
+            echo "Run 'python scripts/generate_models.py' to regenerate"
+            exit 1
+          )
+
   test-live:
     runs-on: ubuntu-latest
     timeout-minutes: 10
