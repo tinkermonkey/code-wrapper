@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CliProcess } from '../process/CliProcess.js';
 import { SessionManager } from '../sessions/SessionManager.js';
 import { runWithRecovery } from '../process/recovery.js';
@@ -22,6 +23,18 @@ interface ExecOptions {
   recoverStaleSession: boolean;
 }
 
+function getVersion(): string {
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const pkgPath = resolve(__dirname, '../../package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    return pkg.version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function parseArgs(argv: string[]): ExecOptions {
   const opts: Partial<ExecOptions> = {
     backend: 'claude',
@@ -39,6 +52,9 @@ function parseArgs(argv: string[]): ExecOptions {
     const arg = args[i];
 
     switch (arg) {
+      case '--version':
+        console.log(getVersion());
+        process.exit(0);
       case '--backend':
         if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
         opts.backend = args[++i] as CliBackend;

@@ -59,10 +59,18 @@ jobs:
           bun build --compile --target=${{ matrix.target }} src/cli/exec.ts --outfile dist/${{ matrix.outfile }}
           chmod +x dist/${{ matrix.outfile }}
 
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256
+          cat ${{ matrix.outfile }}.sha256
+
       - name: Upload binary to release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/${{ matrix.outfile }}
+          files: |
+            dist/${{ matrix.outfile }}
+            dist/${{ matrix.outfile }}.sha256
           draft: false
           prerelease: false
         env:
