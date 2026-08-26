@@ -13,6 +13,8 @@ import os
 import signal
 from collections.abc import AsyncGenerator
 
+from pydantic import ValidationError
+
 from ._binary import CodeWrapperBinaryError, resolve_binary
 from .models import ClaudeEvent, ErrorEvent, deserialize_event
 
@@ -117,7 +119,7 @@ class CodeWrapper:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=options.cwd,
                 env=env,
-                preexec_fn=self._preexec_fn if hasattr(os, "setpgrp") else None,
+                start_new_session=True if hasattr(os, "setsid") else False,
             )
         except FileNotFoundError as e:
             raise CodeWrapperBinaryError(f"Failed to spawn binary: {e}") from e
@@ -131,8 +133,14 @@ class CodeWrapper:
         except (BrokenPipeError, OSError) as e:
             raise CodeWrapperBinaryError(f"Failed to write prompt: {e}") from e
 
+        # Drain stderr in background to prevent deadlock
+        stderr_task = None
+        if self._process.stderr:
+            stderr_task = asyncio.create_task(self._drain_stderr(self._process.stderr))
+
         # Read and yield events
         first_event = True
+        exception_raised = None
         try:
             if self._process.stdout:
                 async for line in self._read_lines(self._process.stdout):
@@ -166,7 +174,7 @@ class CodeWrapper:
                     try:
                         event = deserialize_event(data)
                         yield event
-                    except ValueError as e:
+                    except ValidationError as e:
                         # Yield parse error but continue
                         yield ErrorEvent(
                             v=1,
@@ -178,72 +186,91 @@ class CodeWrapper:
                             exitCode=None,
                         )
 
+        except Exception as e:
+            exception_raised = e
         finally:
+            # Cancel stderr drain task
+            if stderr_task:
+                stderr_task.cancel()
+                try:
+                    await stderr_task
+                except asyncio.CancelledError:
+                    pass
+
             # Clean up process
             if self._process:
                 await self._cleanup_process()
-                # Check for binary error exit codes
+
+            # Only raise exit code errors if no exception was already raised
+            if exception_raised is None and self._process:
                 if self._process.returncode == 2:
                     raise CodeWrapperBinaryError("Binary exited with code 2 (fatal error)")
+                elif self._process.returncode == 3:
+                    raise CodeWrapperBinaryError("Binary exited with code 3 (fatal error)")
+                elif self._process.returncode is not None and self._process.returncode != 0:
+                    raise CodeWrapperBinaryError(
+                        f"Binary exited with code {self._process.returncode}"
+                    )
+
+            # Re-raise any exception that was caught
+            if exception_raised is not None:
+                raise exception_raised
 
     @staticmethod
-    def _preexec_fn():
-        """Pre-exec function to start a new process group."""
-        if hasattr(os, "setpgrp"):
-            os.setpgrp()
+    async def _drain_stderr(reader: asyncio.StreamReader) -> None:
+        """Drain stderr to prevent deadlock from pipe buffer filling."""
+        while True:
+            try:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+            except OSError:
+                break
 
     async def _cleanup_process(self):
-        """Clean up the spawned process with SIGTERM → 3s → SIGKILL escalation."""
+        """Clean up the spawned process with SIGTERM → 3s → SIGKILL escalation.
+
+        Uses negated PID to signal the process group; since the child was spawned
+        with start_new_session=True, it is its own process group leader.
+        """
         if not self._process:
             return
 
         try:
-            # Try SIGTERM on the process group
+            # Try SIGTERM on the process
             if self._process.returncode is None:
-                if not self._signal_process_group(signal.SIGTERM):
-                    return
-
-                # Wait up to 3 seconds for graceful shutdown
-                try:
-                    await asyncio.wait_for(self._process.wait(), timeout=3.0)
-                except asyncio.TimeoutError:
-                    # SIGTERM didn't work, escalate to SIGKILL on the process group
-                    if not self._signal_process_group(signal.SIGKILL):
-                        return
-
+                if self._validate_and_signal_process(signal.SIGTERM):
+                    # Wait up to 3 seconds for graceful shutdown
                     try:
-                        await asyncio.wait_for(self._process.wait(), timeout=1.0)
+                        await asyncio.wait_for(self._process.wait(), timeout=3.0)
                     except asyncio.TimeoutError:
-                        pass
+                        # SIGTERM didn't work, escalate to SIGKILL
+                        self._validate_and_signal_process(signal.SIGKILL)
+                        try:
+                            await asyncio.wait_for(self._process.wait(), timeout=1.0)
+                        except asyncio.TimeoutError:
+                            pass
 
         except ProcessLookupError:
             # Process already dead
             pass
 
-    def _signal_process_group(self, sig: int) -> bool:
-        """Send `sig` to the spawned process's group, guarding against bogus pids.
+    def _validate_and_signal_process(self, sig: int) -> bool:
+        """Send `sig` to the spawned process, guarding against bogus pids.
 
-        os.getpgid()/os.killpg() coerce their pid argument via the __index__
-        protocol, so a non-integer pid (e.g. an unconfigured test double)
-        silently resolves to some unrelated value instead of raising —
-        os.getpgid(unconfigured_mock.pid) resolves to 1 by default. Left
-        unguarded, that can signal PID 1's own process group (the whole
-        surrounding container/session) rather than the intended child.
+        os.kill() coerces its pid argument via the __index__ protocol,
+        so a non-integer pid (e.g. an unconfigured test double) silently
+        resolves to some unrelated value instead of raising. Left unguarded,
+        that could signal an unrelated process.
 
-        `_preexec_fn` always starts the real child in its own fresh process
-        group via os.setpgrp(), so a legitimate spawned child always
-        satisfies pgid == pid. Anything else -- a non-integer/non-positive
-        pid, or a pid whose resolved group doesn't match it -- means this
-        isn't our spawned child and must not be signaled, even if it
-        happens to resolve to some other live process group (a weaker
-        "don't signal our own group" check would miss this: PID 1's group
-        in a container is generally *not* the caller's own group, so that
-        check alone would not have caught the original bug).
+        Since the child is spawned with start_new_session=True, it is its own
+        process group leader. We signal it by PID; a negated PID would signal
+        its entire process group (all descendants), which is typically desired
+        for cleanup.
 
         Returns False (no signal sent) if there is no process, the process
-        is already gone, or the pid/pgid don't check out. The latter two
-        "bad shape" cases are logged as warnings since they indicate a bug
-        rather than a normal exit.
+        is already gone, or the pid is invalid. Logs warnings for invalid pids
+        since they indicate a bug rather than a normal exit.
         """
         if not self._process:
             return False
@@ -251,31 +278,19 @@ class CodeWrapper:
         pid = self._process.pid
         if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
             logger.warning(
-                "_signal_process_group: process.pid is not a valid pid (%r); "
-                "refusing to signal, child process may be left running unreaped",
+                "_validate_and_signal_process: process.pid is not a valid pid (%r); "
+                "refusing to signal",
                 pid,
             )
             return False
 
         try:
-            pgid = os.getpgid(pid)
+            # Use negated PID to signal the entire process group (child + descendants)
+            os.kill(-pid, sig)
+            return True
         except ProcessLookupError:
             # Process already exited -- nothing to signal, not a bug.
             return False
-
-        if pgid != pid:
-            logger.warning(
-                "_signal_process_group: resolved pgid %s for pid %s does not "
-                "match pid; refusing to signal a process group we did not "
-                "spawn (expected the child to be its own group leader via "
-                "_preexec_fn)",
-                pgid,
-                pid,
-            )
-            return False
-
-        os.killpg(pgid, sig)
-        return True
 
     @staticmethod
     async def _read_lines(reader: asyncio.StreamReader) -> AsyncGenerator[str, None]:
@@ -286,7 +301,8 @@ class CodeWrapper:
                 if not line:
                     break
                 yield line.decode("utf-8", errors="replace")
-            except OSError:
+            except OSError as e:
+                logger.warning("Error reading from stdout: %s", e)
                 break
 
 

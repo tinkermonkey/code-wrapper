@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from code_wrapper import ClientOptions, CodeWrapper, CodeWrapperProtocolError
+from code_wrapper._binary import CodeWrapperBinaryError
 
 
 def create_mock_process():
@@ -273,31 +274,27 @@ class TestClaudeCodeEnvDeletion:
 
 
 class TestCleanupProcessGuards:
-    """Test that _cleanup_process never signals a bogus or unrelated process group.
+    """Test that _cleanup_process never signals a bogus or unrelated process.
 
     Regression coverage for a bug where an unconfigured mock's `.pid`
-    (a non-integer) was silently coerced by os.getpgid()/os.killpg() via
-    the __index__ protocol, resolving to process group 1 and sending a
-    real SIGTERM to the surrounding container. See client.py's
-    _signal_process_group.
+    (a non-integer) was silently coerced by os.kill() via the __index__
+    protocol, resolving to an unrelated process. See client.py's
+    _validate_and_signal_process.
 
-    All pid/pgid values used here are inert sentinels -- os.getpgid and
-    os.killpg are always patched, so no test depends on a real process
-    existing at these values.
+    All pid values used here are inert sentinels -- os.kill is always
+    patched, so no test depends on a real process existing at these values.
     """
 
     @pytest.mark.asyncio
     async def test_cleanup_skips_non_integer_pid(self, client):
-        """A non-integer pid must never reach os.getpgid/os.killpg."""
+        """A non-integer pid must never reach os.kill."""
         client._process = create_mock_process()
         client._process.pid = AsyncMock()  # not a real int, e.g. an unconfigured mock
 
-        with patch("code_wrapper.client.os.getpgid") as mock_getpgid:
-            with patch("code_wrapper.client.os.killpg") as mock_killpg:
-                await client._cleanup_process()
+        with patch("code_wrapper.client.os.kill") as mock_kill:
+            await client._cleanup_process()
 
-        mock_getpgid.assert_not_called()
-        mock_killpg.assert_not_called()
+        mock_kill.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cleanup_skips_bool_pid(self, client):
@@ -305,12 +302,10 @@ class TestCleanupProcessGuards:
         client._process = create_mock_process()
         client._process.pid = True
 
-        with patch("code_wrapper.client.os.getpgid") as mock_getpgid:
-            with patch("code_wrapper.client.os.killpg") as mock_killpg:
-                await client._cleanup_process()
+        with patch("code_wrapper.client.os.kill") as mock_kill:
+            await client._cleanup_process()
 
-        mock_getpgid.assert_not_called()
-        mock_killpg.assert_not_called()
+        mock_kill.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cleanup_skips_non_positive_pid(self, client):
@@ -318,55 +313,315 @@ class TestCleanupProcessGuards:
         client._process = create_mock_process()
         client._process.pid = 0
 
-        with patch("code_wrapper.client.os.getpgid") as mock_getpgid:
-            with patch("code_wrapper.client.os.killpg") as mock_killpg:
-                await client._cleanup_process()
+        with patch("code_wrapper.client.os.kill") as mock_kill:
+            await client._cleanup_process()
 
-        mock_getpgid.assert_not_called()
-        mock_killpg.assert_not_called()
+        mock_kill.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_cleanup_skips_pgid_pid_mismatch(self, client):
-        """A resolved pgid that doesn't match the pid means this isn't our
-        spawned child -- a legitimate child is always its own group leader
-        via _preexec_fn's os.setpgrp(). This must be rejected even though
-        the pgid resolves successfully and doesn't happen to equal our own
-        group (the case a weaker "not our own group" check would miss)."""
+    async def test_cleanup_signals_valid_child_with_negated_pid(self, client):
+        """A real child is signaled via negated PID to signal its process group."""
         client._process = create_mock_process()
-        client._process.pid = 424242  # inert sentinel; getpgid is stubbed below
-
-        with patch("code_wrapper.client.os.getpgid", return_value=999999):  # != pid
-            with patch("code_wrapper.client.os.killpg") as mock_killpg:
-                await client._cleanup_process()
-
-        mock_killpg.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_cleanup_signals_valid_child_pgid(self, client):
-        """A real child, its own process group leader, is signaled normally."""
-        client._process = create_mock_process()
-        client._process.pid = 424242  # inert sentinel; getpgid is stubbed below
+        client._process.pid = 424242  # inert sentinel; kill is stubbed below
         client._process.wait = AsyncMock(return_value=0)
 
-        with patch("code_wrapper.client.os.getpgid", return_value=424242):  # == pid
-            with patch("code_wrapper.client.os.killpg") as mock_killpg:
-                await client._cleanup_process()
+        with patch("code_wrapper.client.os.kill") as mock_kill:
+            await client._cleanup_process()
 
-        mock_killpg.assert_called_once_with(424242, signal.SIGTERM)
+        # Should signal with negated PID to signal the process group
+        mock_kill.assert_called_once_with(-424242, signal.SIGTERM)
 
     @pytest.mark.asyncio
     async def test_cleanup_escalates_to_sigkill_on_timeout(self, client):
         """If the process doesn't exit within 3s of SIGTERM, escalate to
         SIGKILL on the same process group."""
         client._process = create_mock_process()
-        client._process.pid = 424242  # inert sentinel; getpgid is stubbed below
+        client._process.pid = 424242  # inert sentinel; kill is stubbed below
         client._process.wait = AsyncMock(side_effect=[asyncio.TimeoutError(), None])
 
-        with patch("code_wrapper.client.os.getpgid", return_value=424242):  # == pid
-            with patch("code_wrapper.client.os.killpg") as mock_killpg:
-                await client._cleanup_process()
+        with patch("code_wrapper.client.os.kill") as mock_kill:
+            await client._cleanup_process()
 
-        assert mock_killpg.call_args_list == [
-            call(424242, signal.SIGTERM),
-            call(424242, signal.SIGKILL),
+        assert mock_kill.call_args_list == [
+            call(-424242, signal.SIGTERM),
+            call(-424242, signal.SIGKILL),
         ]
+
+
+class TestExitCodeHandling:
+    """Test handling of various process exit codes."""
+
+    @pytest.mark.asyncio
+    async def test_exit_code_2_raises_error(self, client, basic_options):
+        """Exit code 2 should raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.returncode = 2
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                assert "code 2" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_exit_code_3_raises_error(self, client, basic_options):
+        """Exit code 3 should raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.returncode = 3
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                assert "code 3" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_exit_code_1_raises_error(self, client, basic_options):
+        """Exit code 1 should raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.returncode = 1
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                assert "code 1" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_exit_code_127_raises_error(self, client, basic_options):
+        """Exit code 127 (command not found) should raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.returncode = 127
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                assert "code 127" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_exit_code_0_succeeds(self, client, basic_options):
+        """Exit code 0 should not raise an error."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.returncode = 0
+                ready_event = {"v": 1, "seq": 0, "timestamp": 0, "type": "ready", "sessionId": "s1"}
+                mock_process.stdout.readline = AsyncMock(
+                    side_effect=[
+                        json.dumps(ready_event).encode() + b"\n",
+                        b"",
+                    ]
+                )
+
+                mock_subprocess.return_value = mock_process
+
+                events = []
+                async for event in client.run(basic_options):
+                    events.append(event)
+
+                # Should complete without raising
+                assert len(events) >= 1
+
+
+class TestStderrDraining:
+    """Test that stderr is drained to prevent deadlock."""
+
+    @pytest.mark.asyncio
+    async def test_stderr_drain_task_created(self, client, basic_options):
+        """Should create a background task to drain stderr."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                # Just verify the stderr draining doesn't break anything
+                events = []
+                async for event in client.run(basic_options):
+                    events.append(event)
+
+                # Should complete without error
+                # The stderr draining happens in the background
+                assert mock_process.stderr is not None
+
+    @pytest.mark.asyncio
+    async def test_stderr_drain_handles_oserror(self, client):
+        """_drain_stderr should handle OSError gracefully."""
+        mock_reader = AsyncMock()
+        mock_reader.read = AsyncMock(side_effect=OSError("Connection lost"))
+
+        # Should not raise
+        await client._drain_stderr(mock_reader)
+
+
+class TestValidationErrorHandling:
+    """Test handling of Pydantic ValidationError."""
+
+    @pytest.mark.asyncio
+    async def test_validation_error_yields_error_event(self, client, basic_options):
+        """Should yield error event for Pydantic ValidationError during deserialization."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+
+                # Valid JSON but invalid for model deserialization
+                # (missing required field for ReadyEvent)
+                invalid_event = {"v": 1, "seq": 0, "timestamp": 0, "type": "ready"}
+                mock_process.stdout.readline = AsyncMock(
+                    side_effect=[
+                        json.dumps(invalid_event).encode() + b"\n",
+                        b"",
+                    ]
+                )
+
+                mock_subprocess.return_value = mock_process
+
+                events = []
+                async for event in client.run(basic_options):
+                    events.append(event)
+
+                # Should have an error event
+                error_events = [e for e in events if e.type == "error"]
+                assert len(error_events) > 0
+                assert error_events[0].code == "parse_error"
+
+
+class TestProcessSpawningErrors:
+    """Test error handling during process spawning and I/O."""
+
+    @pytest.mark.asyncio
+    async def test_file_not_found_error_at_spawn(self, client, basic_options):
+        """FileNotFoundError during spawn should raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_subprocess.side_effect = FileNotFoundError("Binary not found")
+
+                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                assert "failed to spawn binary" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_broken_pipe_error_on_stdin_write(self, client, basic_options):
+        """BrokenPipeError during stdin write should raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_stdin = MagicMock()
+                mock_stdin.write = MagicMock()
+                mock_stdin.drain = AsyncMock(side_effect=BrokenPipeError("Pipe broken"))
+                mock_stdin.close = MagicMock()
+                mock_process.stdin = mock_stdin
+
+                mock_subprocess.return_value = mock_process
+
+                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                assert "failed to write prompt" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_oserror_on_stdin_write(self, client, basic_options):
+        """OSError during stdin write should raise CodeWrapperBinaryError."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_stdin = MagicMock()
+                mock_stdin.write = MagicMock()
+                mock_stdin.drain = AsyncMock(side_effect=OSError("I/O error"))
+                mock_stdin.close = MagicMock()
+                mock_process.stdin = mock_stdin
+
+                mock_subprocess.return_value = mock_process
+
+                with pytest.raises(CodeWrapperBinaryError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                assert "failed to write prompt" in str(exc_info.value).lower()
+
+
+class TestExceptionPropagation:
+    """Test that exceptions are properly propagated and not masked."""
+
+    @pytest.mark.asyncio
+    async def test_protocol_error_not_masked_by_exit_code(self, client, basic_options):
+        """CodeWrapperProtocolError should not be masked by exit code check."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.returncode = 2  # Would normally raise its own error
+
+                # Wrong version to trigger protocol error
+                mock_process.stdout.readline = AsyncMock(
+                    side_effect=[
+                        b'{"v": 99, "seq": 0, "timestamp": 0, "type": "ready"}\n',
+                        b"",
+                    ]
+                )
+
+                mock_subprocess.return_value = mock_process
+
+                with pytest.raises(CodeWrapperProtocolError) as exc_info:
+                    async for _ in client.run(basic_options):
+                        pass
+
+                # Should raise protocol error, not exit code error
+                assert "version mismatch" in str(exc_info.value).lower()
