@@ -164,6 +164,23 @@ class TestClientOptions:
         opts = ClientOptions(cwd="/test", prompt="hello", backend="claude")
         assert opts.backend == "claude"
 
+    def test_inspect_mode_allows_empty_prompt(self):
+        """Empty prompt should be allowed when inspect mode is enabled."""
+        opts = ClientOptions(cwd="/test", prompt="", inspect="sess-123")
+        assert opts.prompt == ""
+        assert opts.inspect == "sess-123"
+
+    def test_inspect_mode_allows_whitespace_only_prompt(self):
+        """Whitespace-only prompt should be allowed when inspect mode is enabled."""
+        opts = ClientOptions(cwd="/test", prompt="   ", inspect="sess-123")
+        assert opts.prompt == "   "
+        assert opts.inspect == "sess-123"
+
+    def test_inspect_field_is_optional(self):
+        """Inspect field should be optional (default None)."""
+        opts = ClientOptions(cwd="/test", prompt="hello")
+        assert opts.inspect is None
+
 
 class TestProtocolVersionCheck:
     """Test wire protocol version checking."""
@@ -380,6 +397,85 @@ class TestBinaryOptions:
                 # Check that --recover-stale-session was passed
                 call_args = mock_subprocess.call_args
                 assert "--recover-stale-session" in call_args[0]
+
+    @pytest.mark.asyncio
+    async def test_inspect_flag_passed_to_binary(self, client, basic_options):
+        """Should pass --inspect <session-id> to binary when inspect is set."""
+        basic_options.inspect = "sess-abc-123"
+        basic_options.prompt = ""
+
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                async for _ in client.run(basic_options):
+                    pass
+
+                # Check that --inspect was passed with the session ID
+                call_args = mock_subprocess.call_args
+                args = call_args[0]
+                assert "--inspect" in args
+                idx = args.index("--inspect")
+                assert args[idx + 1] == "sess-abc-123"
+
+
+class TestInspectMode:
+    """Test inspect mode behavior."""
+
+    @pytest.mark.asyncio
+    async def test_inspect_mode_closes_stdin_immediately(self, client, basic_options):
+        """In inspect mode, stdin should be closed immediately without writing prompt."""
+        basic_options.inspect = "sess-123"
+        basic_options.prompt = ""
+
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                async for _ in client.run(basic_options):
+                    pass
+
+                # Verify stdin.write was NOT called (prompt not written)
+                mock_process.stdin.write.assert_not_called()
+                # But stdin should be closed
+                mock_process.stdin.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_normal_mode_writes_prompt_to_stdin(self, client, basic_options):
+        """In normal mode, prompt should be written to stdin and stdin closed."""
+        basic_options.prompt = "test prompt"
+        basic_options.inspect = None
+
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                mock_subprocess.return_value = mock_process
+
+                async for _ in client.run(basic_options):
+                    pass
+
+                # Verify prompt was written
+                mock_process.stdin.write.assert_called_once_with(b"test prompt")
+                # And stdin was drained and closed
+                mock_process.stdin.drain.assert_called_once()
+                mock_process.stdin.close.assert_called_once()
 
 
 class TestClaudeCodeEnvDeletion:

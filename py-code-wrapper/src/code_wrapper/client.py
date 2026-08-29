@@ -31,6 +31,7 @@ class ClientOptions(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=False)
 
     cwd: str
+    inspect: str | None = None
     prompt: str = ""
     session_id: str | None = None
     is_first_message: bool = True
@@ -42,7 +43,6 @@ class ClientOptions(BaseModel):
     backend: str = Field(default="claude", pattern="^[a-z]+$")
     session_dir: str | None = None
     recover_stale_session: bool = False
-    inspect: str | None = None
 
     @field_validator("cwd")
     @classmethod
