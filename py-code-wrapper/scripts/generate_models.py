@@ -115,6 +115,10 @@ from pydantic import BaseModel, Field, RootModel
             else:
                 continue
 
+        # Replace v: int with v: Literal[1] for WireProtocolVersion fidelity
+        if line.strip().startswith("v: ") and ("int" in line or "float" in line):
+            line = line.replace("v: int", "v: Literal[1]").replace("v: float", "v: Literal[1]")
+
         # Add all lines after imports
         final_code += line + "\n"
 
