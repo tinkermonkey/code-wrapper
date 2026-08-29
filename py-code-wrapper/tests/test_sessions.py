@@ -165,35 +165,33 @@ class TestSessionTrackerInspect:
         """inspect() should use provided cwd and backend when creating ClientOptions."""
         tracker = SessionTracker(session_dir="/tmp/sessions")
 
-        with patch("code_wrapper.sessions.CodeWrapper") as mock_wrapper_class:
-            with patch("code_wrapper.sessions.ClientOptions") as mock_options_class:
-                mock_client = MagicMock()
-                mock_wrapper_class.return_value = mock_client
+        with (
+            patch("code_wrapper.sessions.CodeWrapper") as mock_wrapper_class,
+            patch("code_wrapper.sessions.ClientOptions") as mock_options_class,
+        ):
+            mock_client = MagicMock()
+            mock_wrapper_class.return_value = mock_client
 
-                # Mock a ready event
-                ready_event = MagicMock()
-                ready_event.type = "ready"
-                ready_event.sessionId = "sess-123"
-                ready_event.createdAt = None
-                ready_event.lastActiveAt = None
-                ready_event.cliSessionId = None
+            # Mock a ready event
+            ready_event = MagicMock()
+            ready_event.type = "ready"
+            ready_event.sessionId = "sess-123"
+            ready_event.createdAt = None
+            ready_event.lastActiveAt = None
+            ready_event.cliSessionId = None
 
-                async def async_gen():
-                    yield ready_event
+            async def async_gen():
+                yield ready_event
 
-                mock_client.run.return_value = async_gen()
+            mock_client.run.return_value = async_gen()
 
-                await tracker.inspect(
-                    "sess-123",
-                    cwd="/custom/cwd",
-                    backend="custom-backend"
-                )
+            await tracker.inspect("sess-123", cwd="/custom/cwd", backend="custom-backend")
 
-                # Verify ClientOptions was created with correct params
-                mock_options_class.assert_called_once()
-                call_kwargs = mock_options_class.call_args[1]
-                assert call_kwargs["cwd"] == "/custom/cwd"
-                assert call_kwargs["backend"] == "custom-backend"
-                assert call_kwargs["session_dir"] == "/tmp/sessions"
-                assert call_kwargs["inspect"] == "sess-123"
-                assert call_kwargs["prompt"] == ""
+            # Verify ClientOptions was created with correct params
+            mock_options_class.assert_called_once()
+            call_kwargs = mock_options_class.call_args[1]
+            assert call_kwargs["cwd"] == "/custom/cwd"
+            assert call_kwargs["backend"] == "custom-backend"
+            assert call_kwargs["session_dir"] == "/tmp/sessions"
+            assert call_kwargs["inspect"] == "sess-123"
+            assert call_kwargs["prompt"] == ""
