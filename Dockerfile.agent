@@ -23,15 +23,13 @@ FROM switchyard-orchestrator:latest
 USER root
 
 # ============================================================================
-# Stage 2: Install Additional System Dependencies
+# Stage 2: GitHub CLI Auth Entrypoint
 # ============================================================================
-# The base image already provides Node.js 22 and npm, which satisfies
-# the project's engines requirement of node >= 20.
-# dbus-x11 provides dbus-launch, required by gh CLI for D-Bus authentication.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends dbus-x11 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# The base image entrypoint handles SSH setup. This wrapper ensures gh CLI
+# auth is configured from env vars (GH_TOKEN / GITHUB_TOKEN) by writing
+# hosts.yml directly, avoiding D-Bus/keyring dependency in containers.
+COPY agent-entrypoint.sh /usr/local/bin/agent-entrypoint.sh
+RUN chmod +x /usr/local/bin/agent-entrypoint.sh
 
 # ============================================================================
 # Stage 3: Pre-install Dependencies
@@ -87,4 +85,5 @@ RUN claude --version && \
     npx tsc --version && \
     python3 -c "from datamodel_code_generator import generate; print('datamodel-code-generator OK')"
 
+ENTRYPOINT ["/usr/local/bin/agent-entrypoint.sh"]
 CMD ["/bin/bash"]
