@@ -50,7 +50,7 @@ dev = [
 # still up to date.
 codegen = [
     "datamodel-code-generator==0.45.0",
-    "black==26.5.1",
+    "black==25.11.0",
     "isort==7.0.0",
     "Jinja2==3.1.6",
     "inflect==7.5.0",
