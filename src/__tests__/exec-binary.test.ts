@@ -234,6 +234,20 @@ describe('code-wrapper exec binary', () => {
       expect(result.exitCode).toBe(2);
     });
 
+    it('exits with code 2 for unknown arguments', async () => {
+      const result = await spawnBinaryWithFixture(fakeClaudePath, 'claude', 'golden-path', [
+        '--unknown-option',
+      ]);
+      expect(result.exitCode).toBe(2);
+    });
+
+    it('exits with code 2 for misspelled arguments like --idle_timeout', async () => {
+      const result = await spawnBinaryWithFixture(fakeClaudePath, 'claude', 'golden-path', [
+        '--idle_timeout', '10',
+      ]);
+      expect(result.exitCode).toBe(2);
+    });
+
     it('exits with code 2 for missing cwd with no default', async () => {
       const result = await spawnBinaryWithFixture(fakeClaudePath, 'claude', 'golden-path', [
         '--prompt', 'test',

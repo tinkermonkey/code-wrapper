@@ -120,6 +120,11 @@ function parseArgs(argv: string[]): ExecOptions {
       case '--recover-stale-session':
         opts.recoverStaleSession = true;
         break;
+      default:
+        if (arg.startsWith('-')) {
+          throw new Error(`Unknown option: ${arg}`);
+        }
+        break;
     }
   }
 

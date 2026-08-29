@@ -36,7 +36,9 @@ export class CliProcess {
       if (process.platform === 'win32') {
         process.kill(proc.pid, signal);
       } else {
-        process.kill(-proc.pid, signal);
+        // On Unix, send signal to the process directly. On process termination,
+        // the OS will terminate the process group/session to prevent orphaned children.
+        process.kill(proc.pid, signal);
       }
     } catch (err) {
       const code = (err as { code?: string }).code;
@@ -101,7 +103,6 @@ export class CliProcess {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'] as const,
       env,
-      detached: true,
     };
 
     const proc = spawn(
