@@ -30,16 +30,17 @@ export class CliProcess {
 
   constructor(private readonly backend: CliBackend = 'claude') {}
 
-  private killProcessGroup(proc: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
+  private sendSignal(proc: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
     if (proc.pid == null) return;
     try {
-      if (process.platform === 'win32') {
-        process.kill(proc.pid, signal);
-      } else {
-        // On Unix, send signal to the process directly. On process termination,
-        // the OS will terminate the process group/session to prevent orphaned children.
-        process.kill(proc.pid, signal);
-      }
+      // Send signal directly to the child process. Child shares the parent's
+      // process group (spawned without detached flag), so an external signal to
+      // the process group (e.g., `kill -9 -<pgid>`, shell job control, systemd
+      // KillMode=control-group) will terminate the entire group. Note: a
+      // SIGKILL targeting only the child PID (e.g., `kill -9 <pid>`) will not
+      // reach the child's descendants; they become orphaned and are reparented
+      // to init/PID 1.
+      process.kill(proc.pid, signal);
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code !== 'ESRCH') {
@@ -103,6 +104,14 @@ export class CliProcess {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'] as const,
       env,
+      // Intentionally omit detached: true so the child process shares the parent's
+      // process group. This ensures that an external signal to the process group
+      // (e.g., kill -9 -<pgid>, systemd KillMode=control-group) will terminate
+      // both the binary and its children, achieving the safety requirement in Req 7.
+      // Trade-off: SIGKILL sent to the child PID (kill -9 <pid>) will not reach
+      // grandchildren (e.g., tool-execution subprocesses spawned by the CLI); they
+      // become orphaned and are reparented to init/PID 1. For "process group" level
+      // safety (the requirement), external signaling is sufficient.
     };
 
     const proc = spawn(
@@ -216,8 +225,8 @@ export class CliProcess {
     const abortHandler = (): void => {
       if (killedBy) return;
       killedBy = 'aborted';
-      this.killProcessGroup(proc, 'SIGTERM');
-      sigkillTimer = setTimeout(() => this.killProcessGroup(proc, 'SIGKILL'), _sigkillDelayMs);
+      this.sendSignal(proc, 'SIGTERM');
+      sigkillTimer = setTimeout(() => this.sendSignal(proc, 'SIGKILL'), _sigkillDelayMs);
     };
     if (signal) {
       signal.addEventListener('abort', abortHandler);
@@ -236,12 +245,12 @@ export class CliProcess {
       } satisfies ProgressEvent);
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
-        this.killProcessGroup(proc, 'SIGTERM');
-        sigkillTimer = setTimeout(() => this.killProcessGroup(proc, 'SIGKILL'), _sigkillDelayMs);
+        this.sendSignal(proc, 'SIGTERM');
+        sigkillTimer = setTimeout(() => this.sendSignal(proc, 'SIGKILL'), _sigkillDelayMs);
       } else if (now - startedAt > maxTimeout * 1_000) {
         killedBy = 'max';
-        this.killProcessGroup(proc, 'SIGTERM');
-        sigkillTimer = setTimeout(() => this.killProcessGroup(proc, 'SIGKILL'), _sigkillDelayMs);
+        this.sendSignal(proc, 'SIGTERM');
+        sigkillTimer = setTimeout(() => this.sendSignal(proc, 'SIGKILL'), _sigkillDelayMs);
       }
     }, _watchdogIntervalMs);
 
@@ -350,14 +359,14 @@ export class CliProcess {
     }
   }
 
-  /** SIGTERM the active subprocess process group, escalating to SIGKILL after gracePeriodMs */
+  /** SIGTERM the active subprocess, escalating to SIGKILL after gracePeriodMs */
   async kill(gracePeriodMs = 3_000): Promise<void> {
     const proc = this.activeProc;
     if (!proc || proc.pid == null) return;
 
-    this.killProcessGroup(proc, 'SIGTERM');
+    this.sendSignal(proc, 'SIGTERM');
     await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { this.killProcessGroup(proc, 'SIGKILL'); resolve(); }, gracePeriodMs);
+      const timer = setTimeout(() => { this.sendSignal(proc, 'SIGKILL'); resolve(); }, gracePeriodMs);
       proc.once('close', () => { clearTimeout(timer); resolve(); });
     });
     this.activeProc = null;
