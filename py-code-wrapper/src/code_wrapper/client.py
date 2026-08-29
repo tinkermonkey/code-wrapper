@@ -147,7 +147,7 @@ class CodeWrapper:
                 env=env,
                 start_new_session=True if hasattr(os, "setsid") else False,
             )
-        except FileNotFoundError as e:
+        except (FileNotFoundError, PermissionError) as e:
             raise CodeWrapperBinaryError(f"Failed to spawn binary: {e}") from e
 
         # Drain stderr in background to prevent deadlock
@@ -215,20 +215,19 @@ class CodeWrapper:
         except Exception as e:
             exception_raised = e
         finally:
-            # Cancel stderr drain task
+            # Track if we're about to terminate the process ourselves
+            terminated_by_cleanup = self._process is not None and self._process.returncode is None
+
+            # Clean up process first so stderr pipe closes
+            if self._process:
+                await self._cleanup_process()
+
+            # Await stderr drain task to natural completion after process cleanup
             if stderr_task:
-                stderr_task.cancel()
                 try:
                     await stderr_task
                 except asyncio.CancelledError:
                     pass
-
-            # Track if we're about to terminate the process ourselves
-            terminated_by_cleanup = self._process is not None and self._process.returncode is None
-
-            # Clean up process
-            if self._process:
-                await self._cleanup_process()
 
             # Only raise exit code errors if:
             # 1. No exception was already raised
@@ -244,7 +243,7 @@ class CodeWrapper:
                     if self._stderr_buffer:
                         error_msg += f"\n{self._stderr_buffer}"
                     raise CodeWrapperProtocolError(error_msg)
-                elif self._process.returncode is not None and self._process.returncode != 0:
+                elif self._process.returncode is not None and self._process.returncode > 1:
                     error_msg = f"Binary exited with code {self._process.returncode}"
                     if self._stderr_buffer:
                         error_msg += f"\n{self._stderr_buffer}"
@@ -290,7 +289,13 @@ class CodeWrapper:
                         try:
                             await asyncio.wait_for(self._process.wait(), timeout=1.0)
                         except asyncio.TimeoutError:
-                            pass
+                            # SIGKILL failed to terminate process within 1 second
+                            if self._process and isinstance(self._process.pid, int):
+                                logger.error(
+                                    "Process (PID %d) did not terminate after SIGKILL; "
+                                    "manual intervention may be required",
+                                    self._process.pid,
+                                )
 
         except ProcessLookupError:
             # Process already dead

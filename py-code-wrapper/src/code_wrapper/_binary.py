@@ -54,11 +54,15 @@ def _resolve_from_env() -> Path | None:
     binary_path = os.environ.get("CODE_WRAPPER_BINARY")
     if binary_path:
         path = Path(binary_path)
-        if path.exists() and path.is_file():
-            return path
-        raise CodeWrapperBinaryError(
-            f"CODE_WRAPPER_BINARY points to non-existent file: {binary_path}"
-        )
+        if not path.exists() or not path.is_file():
+            raise CodeWrapperBinaryError(
+                f"CODE_WRAPPER_BINARY points to non-existent file: {binary_path}"
+            )
+        if not os.access(path, os.X_OK):
+            raise CodeWrapperBinaryError(
+                f"CODE_WRAPPER_BINARY points to non-executable file: {binary_path}"
+            )
+        return path
     return None
 
 
@@ -67,7 +71,7 @@ def _resolve_from_path() -> Path | None:
     binary_path = shutil.which("code-wrapper")
     if binary_path:
         path = Path(binary_path)
-        if path.exists():
+        if path.exists() and os.access(path, os.X_OK):
             return path
     return None
 
@@ -79,7 +83,7 @@ def _resolve_bundled() -> Path | None:
     package_dir = Path(__file__).parent
     binary_path = package_dir / "binaries" / binary_name
 
-    if binary_path.exists():
+    if binary_path.exists() and os.access(binary_path, os.X_OK):
         return binary_path
     return None
 
