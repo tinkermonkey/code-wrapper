@@ -3,7 +3,7 @@
 
 This script fetches platform-specific binaries from GitHub Releases and places them
 in the package's binaries directory. It's called during the build process via
-pyproject.toml's [build-system] hook.
+setup.py during package installation.
 
 By default, downloads only the binary matching the current platform. Set
 CODE_WRAPPER_VERSION to specify a release version (e.g., "v0.1.0"), or set it to

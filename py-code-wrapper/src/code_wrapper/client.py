@@ -13,7 +13,7 @@ import os
 import signal
 from collections.abc import AsyncGenerator
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from ._binary import CodeWrapperBinaryError, resolve_binary
 from .models import ClaudeEvent, ErrorEvent, deserialize_event
@@ -25,36 +25,48 @@ class CodeWrapperProtocolError(Exception):
     """Raised when wire protocol version mismatch is detected."""
 
 
-class ClientOptions:
+class ClientOptions(BaseModel):
     """Options for running the client."""
 
-    def __init__(
-        self,
-        cwd: str,
-        prompt: str,
-        session_id: str | None = None,
-        is_first_message: bool = True,
-        idle_timeout: int = 300,
-        max_timeout: int = 3600,
-        skip_permissions: bool = False,
-        agent: str | None = None,
-        mcp_config_path: str | None = None,
-        backend: str = "claude",
-        session_dir: str | None = None,
-        recover_stale_session: bool = False,
-    ):
-        self.cwd = cwd
-        self.prompt = prompt
-        self.session_id = session_id
-        self.is_first_message = is_first_message
-        self.idle_timeout = idle_timeout
-        self.max_timeout = max_timeout
-        self.skip_permissions = skip_permissions
-        self.agent = agent
-        self.mcp_config_path = mcp_config_path
-        self.backend = backend
-        self.session_dir = session_dir
-        self.recover_stale_session = recover_stale_session
+    model_config = ConfigDict(str_strip_whitespace=False)
+
+    cwd: str
+    prompt: str
+    session_id: str | None = None
+    is_first_message: bool = True
+    idle_timeout: int = Field(default=300, gt=0)
+    max_timeout: int = Field(default=3600, gt=0)
+    skip_permissions: bool = False
+    agent: str | None = None
+    mcp_config_path: str | None = None
+    backend: str = Field(default="claude", pattern="^[a-z]+$")
+    session_dir: str | None = None
+    recover_stale_session: bool = False
+
+    @field_validator("cwd")
+    @classmethod
+    def validate_cwd(cls, v: str) -> str:
+        """Validate that cwd is not empty."""
+        if not v or not v.strip():
+            raise ValueError("cwd must not be empty")
+        return v
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, v: str) -> str:
+        """Validate that prompt is not empty."""
+        if not v or not v.strip():
+            raise ValueError("prompt must not be empty")
+        return v
+
+    @field_validator("max_timeout")
+    @classmethod
+    def validate_max_timeout(cls, v: int, info) -> int:
+        """Validate that max_timeout >= idle_timeout."""
+        idle_timeout = info.data.get("idle_timeout", 300)
+        if v < idle_timeout:
+            raise ValueError(f"max_timeout ({v}) must be >= idle_timeout ({idle_timeout})")
+        return v
 
 
 class CodeWrapper:
@@ -69,6 +81,7 @@ class CodeWrapper:
     def __init__(self):
         """Initialize the client."""
         self._process: asyncio.subprocess.Process | None = None
+        self._stderr_buffer: str = ""
 
     async def run(self, options: ClientOptions) -> AsyncGenerator[ClaudeEvent, None]:
         """Run the binary and yield typed events.
@@ -85,6 +98,9 @@ class CodeWrapper:
             CodeWrapperProtocolError: if wire protocol version mismatch
             Other exceptions from binary execution
         """
+        # Reset stderr buffer for this run
+        self._stderr_buffer = ""
+
         binary_path = resolve_binary()
 
         # Build command arguments
@@ -219,26 +235,36 @@ class CodeWrapper:
             # 2. We didn't terminate the process ourselves (e.g., GeneratorExit break)
             if exception_raised is None and self._process and not terminated_by_cleanup:
                 if self._process.returncode == 2:
-                    raise CodeWrapperBinaryError("Binary exited with code 2 (fatal error)")
+                    error_msg = "Binary exited with code 2 (fatal error)"
+                    if self._stderr_buffer:
+                        error_msg += f"\n{self._stderr_buffer}"
+                    raise CodeWrapperBinaryError(error_msg)
                 elif self._process.returncode == 3:
-                    raise CodeWrapperProtocolError("Binary exited with code 3 (wire protocol error)")
+                    error_msg = "Binary exited with code 3 (wire protocol error)"
+                    if self._stderr_buffer:
+                        error_msg += f"\n{self._stderr_buffer}"
+                    raise CodeWrapperProtocolError(error_msg)
                 elif self._process.returncode is not None and self._process.returncode != 0:
-                    raise CodeWrapperBinaryError(
-                        f"Binary exited with code {self._process.returncode}"
-                    )
+                    error_msg = f"Binary exited with code {self._process.returncode}"
+                    if self._stderr_buffer:
+                        error_msg += f"\n{self._stderr_buffer}"
+                    raise CodeWrapperBinaryError(error_msg)
 
             # Re-raise any exception that was caught
             if exception_raised is not None:
                 raise exception_raised
 
-    @staticmethod
-    async def _drain_stderr(reader: asyncio.StreamReader) -> None:
-        """Drain stderr to prevent deadlock from pipe buffer filling."""
+    async def _drain_stderr(self, reader: asyncio.StreamReader) -> None:
+        """Buffer stderr to prevent deadlock and capture diagnostic output.
+
+        Accumulates stderr content for error diagnostics when the binary exits.
+        """
         while True:
             try:
                 chunk = await reader.read(4096)
                 if not chunk:
                     break
+                self._stderr_buffer += chunk.decode("utf-8", errors="replace")
             except OSError:
                 break
 
@@ -271,7 +297,7 @@ class CodeWrapper:
             pass
 
     def _validate_and_signal_process(self, sig: int) -> bool:
-        """Send `sig` to the spawned process, guarding against bogus pids.
+        """Send `sig` to the spawned process group, guarding against bogus pids.
 
         os.kill() coerces its pid argument via the __index__ protocol,
         so a non-integer pid (e.g. an unconfigured test double) silently
@@ -279,8 +305,8 @@ class CodeWrapper:
         that could signal an unrelated process.
 
         Since the child is spawned with start_new_session=True, it is its own
-        process group leader. We signal it by PID; a negated PID would signal
-        its entire process group (all descendants), which is typically desired
+        process group leader. We signal it with a negated PID to signal the
+        entire process group (child + descendants), which is typically desired
         for cleanup.
 
         Returns False (no signal sent) if there is no process, the process
