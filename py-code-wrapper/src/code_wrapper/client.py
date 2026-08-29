@@ -212,7 +212,7 @@ class CodeWrapper:
                             exitCode=None,
                         )
 
-        except Exception as e:
+        except (OSError, asyncio.CancelledError) as e:
             exception_raised = e
         finally:
             # Track if we're about to terminate the process ourselves
@@ -278,22 +278,21 @@ class CodeWrapper:
 
         try:
             # Try SIGTERM on the process
-            if self._process.returncode is None:
-                if self._validate_and_signal_process(signal.SIGTERM):
-                    # Wait up to 3 seconds for graceful shutdown
+            if self._process.returncode is None and self._validate_and_signal_process(signal.SIGTERM):
+                # Wait up to 3 seconds for graceful shutdown
+                try:
+                    await asyncio.wait_for(self._process.wait(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    # SIGTERM didn't work, escalate to SIGKILL
+                    self._validate_and_signal_process(signal.SIGKILL)
                     try:
-                        await asyncio.wait_for(self._process.wait(), timeout=3.0)
+                        await asyncio.wait_for(self._process.wait(), timeout=1.0)
                     except asyncio.TimeoutError:
-                        # SIGTERM didn't work, escalate to SIGKILL
-                        self._validate_and_signal_process(signal.SIGKILL)
-                        try:
-                            await asyncio.wait_for(self._process.wait(), timeout=1.0)
-                        except asyncio.TimeoutError:
-                            logger.error(
-                                "Process (PID %d) did not terminate after SIGKILL; "
-                                "manual intervention may be required",
-                                self._process.pid,
-                            )
+                        logger.error(
+                            "Process (PID %d) did not terminate after SIGKILL; "
+                            "manual intervention may be required",
+                            self._process.pid,
+                        )
 
         except ProcessLookupError:
             # Process already dead

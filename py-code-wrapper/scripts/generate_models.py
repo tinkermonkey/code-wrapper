@@ -181,7 +181,7 @@ def deserialize_event(data: dict[str, Any]) -> ClaudeEvent:
     models_path.write_text(final_code)
     print(f"✓ Generated models at {models_path}")
 
-except Exception as e:
+except (OSError, json.JSONDecodeError, RuntimeError, ValueError) as e:
     print(f"Error generating models: {e}", file=sys.stderr)
     import traceback
 
