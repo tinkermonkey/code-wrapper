@@ -70,9 +70,7 @@ def _resolve_from_path() -> Path | None:
     """Resolve 'code-wrapper' from PATH."""
     binary_path = shutil.which("code-wrapper")
     if binary_path:
-        path = Path(binary_path)
-        if path.exists() and os.access(path, os.X_OK):
-            return path
+        return Path(binary_path)
     return None
 
 

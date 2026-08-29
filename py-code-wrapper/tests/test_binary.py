@@ -74,6 +74,7 @@ class TestResolveFromEnv:
             temp_path = f.name
 
         try:
+            os.chmod(temp_path, 0o755)
             with patch.dict(os.environ, {"CODE_WRAPPER_BINARY": temp_path}):
                 result = _resolve_from_env()
                 assert result == Path(temp_path)
@@ -102,6 +103,7 @@ class TestResolveFromPath:
             temp_path = f.name
 
         try:
+            os.chmod(temp_path, 0o755)
             mock_which.return_value = temp_path
             result = _resolve_from_path()
             assert result == Path(temp_path)
@@ -123,6 +125,7 @@ class TestResolveBinary:
             temp_path = f.name
 
         try:
+            os.chmod(temp_path, 0o755)
             with (
                 patch.dict(os.environ, {"CODE_WRAPPER_BINARY": temp_path}),
                 patch("code_wrapper._binary._resolve_from_path", return_value=None),

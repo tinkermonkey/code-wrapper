@@ -29,6 +29,8 @@ def create_mock_process():
     mock_stdin.close = MagicMock()
     mock_process.stdin = mock_stdin
     mock_process.stdout = AsyncMock()
+    mock_process.stderr = AsyncMock()
+    mock_process.stderr.read = AsyncMock(return_value=b"")
     mock_process.wait = AsyncMock()
     mock_process.kill = MagicMock()
     mock_process.terminate = MagicMock()
@@ -530,8 +532,8 @@ class TestExitCodeHandling:
                 assert "code 3" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_exit_code_1_raises_error(self, client, basic_options):
-        """Exit code 1 should raise CodeWrapperBinaryError."""
+    async def test_exit_code_1_does_not_raise(self, client, basic_options):
+        """Exit code 1 should not raise — it is treated as normal completion."""
         with patch("code_wrapper.client.resolve_binary") as mock_resolve:
             mock_binary = MagicMock()
             mock_resolve.return_value = mock_binary
@@ -543,11 +545,41 @@ class TestExitCodeHandling:
 
                 mock_subprocess.return_value = mock_process
 
-                with pytest.raises(CodeWrapperBinaryError) as exc_info:
-                    async for _ in client.run(basic_options):
-                        pass
+                # Should complete without raising
+                events = []
+                async for event in client.run(basic_options):
+                    events.append(event)
 
-                assert "code 1" in str(exc_info.value).lower()
+                # Generator should have run to completion without raising
+                assert len(events) == 0
+
+    @pytest.mark.asyncio
+    async def test_exit_code_1_yields_error_events_then_stops(self, client, basic_options):
+        """Exit code 1 should yield error events from the stream, then stop without raising."""
+        with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+            mock_binary = MagicMock()
+            mock_resolve.return_value = mock_binary
+
+            with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                mock_process = create_mock_process()
+                mock_process.returncode = 1
+
+                # Simulate NDJSON stream with an error event followed by EOF
+                error_event_line = b'{"v": 1, "seq": 0, "timestamp": 0, "type": "error", "code": "cli_error", "detail": "Test CLI error", "exitCode": null}\n'
+                mock_process.stdout.readline = AsyncMock(side_effect=[error_event_line, b""])
+
+                mock_subprocess.return_value = mock_process
+
+                # Should yield the error event and complete without raising
+                events = []
+                async for event in client.run(basic_options):
+                    events.append(event)
+
+                # Should have yielded the error event
+                assert len(events) == 1
+                assert events[0].type == "error"
+                assert events[0].code == "cli_error"
+                assert events[0].detail == "Test CLI error"
 
     @pytest.mark.asyncio
     async def test_exit_code_127_raises_error(self, client, basic_options):

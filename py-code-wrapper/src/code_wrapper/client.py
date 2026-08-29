@@ -289,13 +289,11 @@ class CodeWrapper:
                         try:
                             await asyncio.wait_for(self._process.wait(), timeout=1.0)
                         except asyncio.TimeoutError:
-                            # SIGKILL failed to terminate process within 1 second
-                            if self._process and isinstance(self._process.pid, int):
-                                logger.error(
-                                    "Process (PID %d) did not terminate after SIGKILL; "
-                                    "manual intervention may be required",
-                                    self._process.pid,
-                                )
+                            logger.error(
+                                "Process (PID %d) did not terminate after SIGKILL; "
+                                "manual intervention may be required",
+                                self._process.pid,
+                            )
 
         except ProcessLookupError:
             # Process already dead
