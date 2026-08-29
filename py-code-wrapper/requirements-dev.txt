@@ -1,4 +1,4 @@
-datamodel-code-generator>=0.25.0
+datamodel-code-generator==0.45.0
 pytest>=7.0
 pytest-asyncio>=0.21
 pydantic>=2.0
