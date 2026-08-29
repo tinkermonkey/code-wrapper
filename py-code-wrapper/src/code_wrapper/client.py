@@ -31,7 +31,7 @@ class ClientOptions(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=False)
 
     cwd: str
-    prompt: str
+    prompt: str = ""
     session_id: str | None = None
     is_first_message: bool = True
     idle_timeout: int = Field(default=300, gt=0)
@@ -42,6 +42,7 @@ class ClientOptions(BaseModel):
     backend: str = Field(default="claude", pattern="^[a-z]+$")
     session_dir: str | None = None
     recover_stale_session: bool = False
+    inspect: str | None = None
 
     @field_validator("cwd")
     @classmethod
@@ -53,10 +54,11 @@ class ClientOptions(BaseModel):
 
     @field_validator("prompt")
     @classmethod
-    def validate_prompt(cls, v: str) -> str:
-        """Validate that prompt is not empty."""
-        if not v or not v.strip():
-            raise ValueError("prompt must not be empty")
+    def validate_prompt(cls, v: str, info) -> str:
+        """Validate that prompt is not empty if not in inspect mode."""
+        inspect_mode = info.data.get("inspect")
+        if not inspect_mode and (not v or not v.strip()):
+            raise ValueError("prompt must not be empty (except in inspect mode)")
         return v
 
     @field_validator("max_timeout")
@@ -129,6 +131,9 @@ class CodeWrapper:
         if options.recover_stale_session:
             args.append("--recover-stale-session")
 
+        if options.inspect:
+            args.extend(["--inspect", options.inspect])
+
         args.extend(["--idle-timeout", str(options.idle_timeout)])
         args.extend(["--max-timeout", str(options.max_timeout)])
 
@@ -159,14 +164,19 @@ class CodeWrapper:
         first_event = True
         exception_raised = None
         try:
-            # Write prompt to stdin and close it
-            try:
+            # Write prompt to stdin and close it (skip for inspect mode)
+            if not options.inspect:
+                try:
+                    if self._process.stdin:
+                        self._process.stdin.write(options.prompt.encode("utf-8"))
+                        await self._process.stdin.drain()
+                        self._process.stdin.close()
+                except (BrokenPipeError, OSError) as e:
+                    raise CodeWrapperBinaryError(f"Failed to write prompt: {e}") from e
+            else:
+                # Close stdin immediately in inspect mode
                 if self._process.stdin:
-                    self._process.stdin.write(options.prompt.encode("utf-8"))
-                    await self._process.stdin.drain()
                     self._process.stdin.close()
-            except (BrokenPipeError, OSError) as e:
-                raise CodeWrapperBinaryError(f"Failed to write prompt: {e}") from e
 
             if self._process.stdout:
                 async for line in self._read_lines(self._process.stdout):

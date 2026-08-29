@@ -237,6 +237,18 @@
             "type": "string"
           },
           "description": "Names of tools available to the agent"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when session was created (inspect mode only)"
+        },
+        "lastActiveAt": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when session was last active (inspect mode only)"
+        },
+        "cliSessionId": {
+          "type": "string",
+          "description": "CLI-assigned session ID from a prior conversation (inspect mode only)"
         }
       },
       "required": [
@@ -412,7 +424,9 @@
         "parse_error",
         "cli_error",
         "wire_protocol_error",
-        "aborted"
+        "aborted",
+        "inspect_requires_session_dir",
+        "session_not_found"
       ]
     },
     "RawEvent": {

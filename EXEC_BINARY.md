@@ -76,6 +76,7 @@ code-wrapper exec \
   --session-id <id>           # for new sessions
   --resume <id>               # for resuming sessions
   --is-first-message          # flag, controls --session-id vs --resume
+  --inspect <session-id>      # query session metadata without running
   --idle-timeout 300          # seconds, default 300
   --max-timeout 3600          # seconds, default 3600
   --skip-permissions          # flag
@@ -96,6 +97,7 @@ code-wrapper exec \
 | `--session-id` | string | — | Start a new session with this ID |
 | `--resume` | string | — | Resume an existing session with this ID |
 | `--is-first-message` | flag | true | Set to true for new sessions |
+| `--inspect` | string | — | Query session metadata without running a full generation |
 | `--idle-timeout` | seconds | 300 | Timeout for stdout silence (SIGTERM) |
 | `--max-timeout` | seconds | 3600 | Hard ceiling for run duration (SIGKILL) |
 | `--skip-permissions` | flag | false | Pass --permission-mode bypassPermissions to CLI |
@@ -157,6 +159,15 @@ The CLI creates a new session and returns a `sessionId` in the `ready` event.
 --resume <sessionId>
 ```
 Pass the `sessionId` from the prior `done` event. The CLI reuses the session context.
+
+**Inspect session (query metadata):**
+```
+--inspect <session-id> --session-dir /path/to/sessions
+```
+Query a session's metadata (createdAt, lastActiveAt, cliSessionId) without running a full generation.
+Requires `--session-dir` to be set. The binary returns a single `ready` event with session metadata,
+followed by a `done` event. Useful for checking session existence and last activity before deciding
+whether to resume or start a new session.
 
 ### Stale Session Recovery
 
@@ -273,6 +284,27 @@ async def main():
                 print(f"Cost: ${event.total_cost_usd}")
             case "error":
                 raise RuntimeError(f"{event.code}: {event.detail}")
+
+asyncio.run(main())
+```
+
+### Session Inspection
+
+The `SessionTracker` provides an `inspect()` method for querying session metadata without running a full generation:
+
+```python
+import asyncio
+from py_code_wrapper import SessionTracker
+
+async def main():
+    tracker = SessionTracker(session_dir="./sessions")
+    session = await tracker.inspect("user-123")
+    if session:
+        print(f"Created: {session['createdAt']}")
+        print(f"Last active: {session['lastActiveAt']}")
+        print(f"CLI session ID: {session['cliSessionId']}")
+    else:
+        print("Session not found")
 
 asyncio.run(main())
 ```

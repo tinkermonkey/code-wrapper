@@ -28,6 +28,7 @@ interface ExecOptions {
   mcpConfigPath?: string;
   sessionDir?: string;
   recoverStaleSession: boolean;
+  inspect?: string;
 }
 
 function getVersion(): string {
@@ -120,6 +121,10 @@ function parseArgs(argv: string[]): ExecOptions {
       case '--recover-stale-session':
         opts.recoverStaleSession = true;
         break;
+      case '--inspect':
+        if (i + 1 >= args.length) throw new Error(`${arg} requires a value`);
+        opts.inspect = args[++i];
+        break;
       default:
         if (arg.startsWith('-')) {
           throw new Error(`Unknown option: ${arg}`);
@@ -128,8 +133,8 @@ function parseArgs(argv: string[]): ExecOptions {
     }
   }
 
-  // Read prompt from stdin if not provided via --prompt
-  if (!prompt) {
+  // For inspect mode, we don't need a prompt
+  if (!prompt && !opts.inspect) {
     try {
       prompt = readFileSync(0, 'utf-8');
     } catch (err) {
@@ -145,7 +150,7 @@ function parseArgs(argv: string[]): ExecOptions {
   return {
     backend: opts.backend!,
     cwd: opts.cwd,
-    prompt,
+    prompt: prompt || '',
     sessionId: opts.sessionId,
     isFirstMessage: opts.isFirstMessage!,
     idleTimeout: opts.idleTimeout!,
@@ -155,6 +160,7 @@ function parseArgs(argv: string[]): ExecOptions {
     mcpConfigPath: opts.mcpConfigPath,
     sessionDir: opts.sessionDir,
     recoverStaleSession: opts.recoverStaleSession!,
+    inspect: opts.inspect,
   };
 }
 
@@ -169,6 +175,62 @@ async function main(): Promise<void> {
         persistPath: resolve(execOpts.sessionDir, 'sessions.json'),
       })
     : null;
+
+  // Handle inspect mode
+  if (execOpts.inspect) {
+    if (!sessionManager) {
+      console.log(JSON.stringify({
+        v: 1,
+        seq: 1,
+        timestamp: Date.now(),
+        type: 'error',
+        code: 'inspect_requires_session_dir',
+        detail: 'Inspect mode requires --session-dir to be set',
+        exitCode: null,
+      }));
+      process.exit(1);
+    }
+
+    const session = sessionManager.resumeSession(execOpts.inspect);
+    if (!session) {
+      console.log(JSON.stringify({
+        v: 1,
+        seq: 1,
+        timestamp: Date.now(),
+        type: 'error',
+        code: 'session_not_found',
+        detail: `Session not found: ${execOpts.inspect}`,
+        exitCode: null,
+      }));
+      process.exit(1);
+    }
+
+    // Emit a ready event with the session information
+    console.log(JSON.stringify({
+      v: 1,
+      seq: 1,
+      timestamp: Date.now(),
+      type: 'ready',
+      sessionId: session.cliSessionId || '',
+      model: 'unknown',
+      tools: [],
+      createdAt: session.createdAt,
+      lastActiveAt: session.lastActiveAt,
+      cliSessionId: session.cliSessionId,
+    }));
+
+    // Emit a done event to signal completion
+    console.log(JSON.stringify({
+      v: 1,
+      seq: 2,
+      timestamp: Date.now(),
+      type: 'done',
+      sessionId: session.cliSessionId || '',
+      totalCostUsd: 0,
+    }));
+
+    process.exit(0);
+  }
 
   const processOpts: ProcessOptions = {
     cwd: execOpts.cwd,
