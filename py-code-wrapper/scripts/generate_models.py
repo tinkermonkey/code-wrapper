@@ -145,7 +145,7 @@ def deserialize_event(data: dict[str, Any]) -> ClaudeEvent:
     """Deserialize a JSON object into a typed ClaudeEvent.
 
     Discriminates on the 'type' field. Unknown types become RawEvent.
-    Raises ValueError if data is missing required fields for a known type.
+    Raises ValidationError if data is missing required fields for a known type.
     """
     event_type: str = data.get("type", "")
 

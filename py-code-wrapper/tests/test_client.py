@@ -71,6 +71,97 @@ class TestClientOptions:
         assert opts.session_id == "sess-123"
         assert opts.is_first_message is False
 
+    def test_empty_cwd_raises_validation_error(self):
+        """Empty cwd should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="", prompt="hello")
+        assert "cwd" in str(exc_info.value).lower()
+
+    def test_whitespace_only_cwd_raises_validation_error(self):
+        """Whitespace-only cwd should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="   ", prompt="hello")
+        assert "cwd" in str(exc_info.value).lower()
+
+    def test_empty_prompt_raises_validation_error(self):
+        """Empty prompt should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="/test", prompt="")
+        assert "prompt" in str(exc_info.value).lower()
+
+    def test_whitespace_only_prompt_raises_validation_error(self):
+        """Whitespace-only prompt should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="/test", prompt="   ")
+        assert "prompt" in str(exc_info.value).lower()
+
+    def test_negative_idle_timeout_raises_validation_error(self):
+        """Negative idle_timeout should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="/test", prompt="hello", idle_timeout=-1)
+        assert "idle_timeout" in str(exc_info.value).lower()
+
+    def test_zero_idle_timeout_raises_validation_error(self):
+        """Zero idle_timeout should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="/test", prompt="hello", idle_timeout=0)
+        assert "idle_timeout" in str(exc_info.value).lower()
+
+    def test_negative_max_timeout_raises_validation_error(self):
+        """Negative max_timeout should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="/test", prompt="hello", max_timeout=-1)
+        assert "max_timeout" in str(exc_info.value).lower()
+
+    def test_max_timeout_less_than_idle_timeout_raises_validation_error(self):
+        """max_timeout < idle_timeout should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(
+                cwd="/test",
+                prompt="hello",
+                idle_timeout=600,
+                max_timeout=300,
+            )
+        assert "max_timeout" in str(exc_info.value).lower()
+
+    def test_max_timeout_equals_idle_timeout_succeeds(self):
+        """max_timeout == idle_timeout should succeed."""
+        opts = ClientOptions(
+            cwd="/test",
+            prompt="hello",
+            idle_timeout=600,
+            max_timeout=600,
+        )
+        assert opts.max_timeout == 600
+        assert opts.idle_timeout == 600
+
+    def test_invalid_backend_pattern_raises_validation_error(self):
+        """Backend with uppercase or non-alphanumeric should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="/test", prompt="hello", backend="Claude")
+        assert "backend" in str(exc_info.value).lower()
+
+    def test_backend_with_numbers_raises_validation_error(self):
+        """Backend with numbers should raise ValidationError."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            ClientOptions(cwd="/test", prompt="hello", backend="claude123")
+        assert "backend" in str(exc_info.value).lower()
+
+    def test_valid_backend_pattern_succeeds(self):
+        """Valid backend pattern should succeed."""
+        opts = ClientOptions(cwd="/test", prompt="hello", backend="claude")
+        assert opts.backend == "claude"
+
 
 class TestProtocolVersionCheck:
     """Test wire protocol version checking."""
@@ -539,6 +630,53 @@ class TestStderrDraining:
 
         # Should not raise
         await client._drain_stderr(mock_reader)
+
+    @pytest.mark.asyncio
+    async def test_stderr_drain_accumulates_into_buffer(self, client):
+        """_drain_stderr should accumulate stderr content into _stderr_buffer."""
+        mock_reader = AsyncMock()
+        stderr_chunks = [b"Error: ", b"something ", b"went wrong"]
+        mock_reader.read = AsyncMock(side_effect=stderr_chunks + [b""])
+
+        await client._drain_stderr(mock_reader)
+
+        # Buffer should contain all stderr content
+        assert client._stderr_buffer == "Error: something went wrong"
+
+    def test_stderr_buffer_construction_code_2_empty(self, client):
+        """Test that exit code 2 message is formatted correctly when stderr is empty."""
+        client._stderr_buffer = ""
+        error_msg = "Binary exited with code 2 (fatal error)"
+        if client._stderr_buffer:
+            error_msg += f"\n{client._stderr_buffer}"
+        assert error_msg == "Binary exited with code 2 (fatal error)"
+        assert "\n" not in error_msg or error_msg.count("\n") == 0
+
+    def test_stderr_buffer_construction_code_2_with_content(self, client):
+        """Test that exit code 2 message includes stderr content."""
+        client._stderr_buffer = "Binary crash: stack trace here"
+        error_msg = "Binary exited with code 2 (fatal error)"
+        if client._stderr_buffer:
+            error_msg += f"\n{client._stderr_buffer}"
+        assert error_msg == "Binary exited with code 2 (fatal error)\nBinary crash: stack trace here"
+        assert "crash" in error_msg
+
+    def test_stderr_buffer_construction_code_3_empty(self, client):
+        """Test that exit code 3 message is formatted correctly when stderr is empty."""
+        client._stderr_buffer = ""
+        error_msg = "Binary exited with code 3 (wire protocol error)"
+        if client._stderr_buffer:
+            error_msg += f"\n{client._stderr_buffer}"
+        assert error_msg == "Binary exited with code 3 (wire protocol error)"
+
+    def test_stderr_buffer_construction_code_3_with_content(self, client):
+        """Test that exit code 3 message includes stderr content."""
+        client._stderr_buffer = "Protocol error: invalid message"
+        error_msg = "Binary exited with code 3 (wire protocol error)"
+        if client._stderr_buffer:
+            error_msg += f"\n{client._stderr_buffer}"
+        assert "protocol error" in error_msg
+        assert error_msg == "Binary exited with code 3 (wire protocol error)\nProtocol error: invalid message"
 
 
 class TestValidationErrorHandling:

@@ -3,7 +3,7 @@
 A thin wrapper that spawns the compiled code-wrapper binary and exposes
 an async generator over its NDJSON output. The client contains zero protocol
 knowledge — it only resolves the binary, manages the subprocess, and
-deserializes JSON lines into hand-written type models.
+deserializes JSON lines into generated types.
 
 Example:
     import asyncio
