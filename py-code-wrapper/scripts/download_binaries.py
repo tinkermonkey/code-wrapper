@@ -139,6 +139,13 @@ def download_binary(url: str, output_path: Path, checksum_url: str | None = None
     Returns:
         True if successful and verified, False otherwise
     """
+    if not url:
+        print(
+            f"Failed to download {output_path.name}: no download URL found",
+            file=sys.stderr,
+        )
+        return False
+
     if not checksum_url:
         print(
             f"Failed to download {output_path.name}: no checksum file found for integrity verification",
