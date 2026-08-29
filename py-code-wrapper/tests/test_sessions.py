@@ -1,7 +1,6 @@
 """Tests for code-wrapper session tracking."""
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
