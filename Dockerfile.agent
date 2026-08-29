@@ -45,9 +45,19 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts --include=dev
 
-# Install Python dev dependencies for py-code-wrapper
-COPY py-code-wrapper/requirements-dev.txt py-code-wrapper/
-RUN pip install --no-cache-dir -r py-code-wrapper/requirements-dev.txt
+# Install Python dev + codegen dependencies for py-code-wrapper
+COPY py-code-wrapper/pyproject.toml py-code-wrapper/setup.py py-code-wrapper/
+RUN pip install --no-cache-dir \
+    "pydantic>=2.0" \
+    "typing-extensions>=4.0" \
+    "pytest>=7.0" \
+    "pytest-asyncio>=0.21" \
+    "mypy>=1.0" \
+    "datamodel-code-generator==0.45.0" \
+    "black==26.5.1" \
+    "isort==7.0.0" \
+    "Jinja2==3.1.6" \
+    "inflect==7.5.0"
 
 # ============================================================================
 # Stage 3.5: Install GitHub Copilot CLI
