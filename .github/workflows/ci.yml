@@ -5,9 +5,27 @@ on:
   push:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      python-models: ${{ steps.filter.outputs.python-models }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python-models:
+              - 'src/events/**'
+              - 'schemas/**'
+              - 'py-code-wrapper/scripts/generate_models.py'
+              - 'py-code-wrapper/pyproject.toml'
+              - 'py-code-wrapper/src/code_wrapper/models.py'
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: changes
     steps:
       - uses: actions/checkout@v4
 
@@ -33,23 +51,28 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
-      - uses: actions/setup-python@v4
+      # Generation happens on a developer's machine, using the exact-pinned
+      # `codegen` extra (see py-code-wrapper/pyproject.toml) so local runs
+      # and this check produce identical bytes. This job never generates
+      # models as its own source of truth — it only verifies that whoever
+      # last touched the schema/types also regenerated and committed
+      # src/code_wrapper/models.py. Only runs when files that can affect
+      # that output actually changed (see the `changes` job above).
+      - if: needs.changes.outputs.python-models == 'true'
+        uses: actions/setup-python@v4
         with:
           python-version: "3.9"
           cache: pip
 
-      - name: Generate Python models
+      - name: Verify Python models are up to date
+        if: needs.changes.outputs.python-models == 'true'
         run: |
           cd py-code-wrapper
-          pip install -e ".[dev]"
+          pip install -e ".[codegen]"
           python scripts/generate_models.py
-
-      - name: Check Python models drift
-        run: |
-          cd py-code-wrapper
           git diff --exit-code src/code_wrapper/models.py || (
             echo "❌ Python models have drifted from schema"
-            echo "Run 'python scripts/generate_models.py' to regenerate"
+            echo "Run 'pip install -e \".[codegen]\"' then 'python scripts/generate_models.py' locally, then commit the result"
             exit 1
           )
 

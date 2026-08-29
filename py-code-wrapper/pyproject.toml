@@ -39,9 +39,21 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
-    "black>=23.0",
     "mypy>=1.0",
+]
+# Exact-pinned toolchain for regenerating src/code_wrapper/models.py from the
+# JSON schema. Every package here can change the bytes of the generated
+# output (directly, or via a formatter/template it drives), so all of them
+# are pinned exactly rather than left as floating minimums. This is what
+# `scripts/generate_models.py` requires; install it locally before running
+# that script, the same way CI does when it verifies the generated file is
+# still up to date.
+codegen = [
     "datamodel-code-generator==0.45.0",
+    "black==26.5.1",
+    "isort==7.0.0",
+    "Jinja2==3.1.6",
+    "inflect==7.5.0",
 ]
 
 [project.urls]
