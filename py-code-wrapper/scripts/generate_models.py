@@ -17,11 +17,11 @@ from pathlib import Path
 # Try to import datamodel_code_generator
 try:
     from datamodel_code_generator import (
-        generate,
-        PythonVersion,
         DataModelType,
-        InputFileType,
         Formatter,
+        InputFileType,
+        PythonVersion,
+        generate,
     )
     from datamodel_code_generator.parser import LiteralType
 except ImportError:

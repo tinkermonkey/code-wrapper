@@ -145,7 +145,7 @@ class CodeWrapper:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=options.cwd,
                 env=env,
-                start_new_session=True if hasattr(os, "setsid") else False,
+                start_new_session=bool(hasattr(os, "setsid")),
             )
         except (FileNotFoundError, PermissionError) as e:
             raise CodeWrapperBinaryError(f"Failed to spawn binary: {e}") from e
