@@ -8,6 +8,8 @@ models are written to src/code_wrapper/models.py.
 Run this whenever the schema changes to keep models in sync.
 """
 
+import contextlib
+import io
 import json
 import sys
 from pathlib import Path
@@ -52,21 +54,34 @@ try:
     # Convert back to JSON string to avoid version-specific issues with dict input
     schema_json = json.dumps(schema_dict)
 
-    # Generate models using datamodel-code-generator
-    generated_code = generate(
-        input_=schema_json,
-        input_file_type=InputFileType.JsonSchema,
-        output_model_type=DataModelType.PydanticV2BaseModel,
-        snake_case_field=False,
-        target_python_version=PythonVersion.PY_311,
-        use_annotated=False,
-        use_union_operator=False,
-        use_standard_collections=True,
-        base_class="pydantic.BaseModel",
-        collapse_root_models=True,
-        enum_field_as_literal=LiteralType.All,
-        formatters=[Formatter.BLACK, Formatter.ISORT],
-    )
+    # Generate models using datamodel-code-generator.
+    # NOTE: as of datamodel-code-generator 0.45.0, generate() always returns
+    # None and, when called without `output=`, writes the generated code to
+    # stdout instead. Capture that stdout to get the code as a string, since
+    # we still need to post-process it below before writing the real output
+    # file.
+    stdout_capture = io.StringIO()
+    with contextlib.redirect_stdout(stdout_capture):
+        generate(
+            input_=schema_json,
+            input_file_type=InputFileType.JsonSchema,
+            output_model_type=DataModelType.PydanticV2BaseModel,
+            snake_case_field=False,
+            target_python_version=PythonVersion.PY_311,
+            use_annotated=False,
+            use_union_operator=False,
+            use_standard_collections=True,
+            base_class="pydantic.BaseModel",
+            collapse_root_models=True,
+            enum_field_as_literal=LiteralType.All,
+            formatters=[Formatter.BLACK, Formatter.ISORT],
+        )
+    generated_code = stdout_capture.getvalue().rstrip("\n")
+    if not generated_code.strip():
+        raise RuntimeError(
+            "datamodel-code-generator produced no output (check schema validity "
+            "and installed library version compatibility)"
+        )
 
     # Create header with instructions
     header = '''"""Type models for code-wrapper wire protocol events (v1).
