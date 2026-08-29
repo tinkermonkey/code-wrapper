@@ -14,7 +14,13 @@ from pathlib import Path
 
 # Try to import datamodel_code_generator
 try:
-    from datamodel_code_generator import generate, PythonVersion, DataModelType, InputFileType, Formatter
+    from datamodel_code_generator import (
+        generate,
+        PythonVersion,
+        DataModelType,
+        InputFileType,
+        Formatter,
+    )
     from datamodel_code_generator.parser import LiteralType
 except ImportError:
     print("Error: datamodel-code-generator not installed", file=sys.stderr)
@@ -36,16 +42,19 @@ print(f"Output: {models_path}")
 
 try:
     # Load schema and remove remote $id to avoid fetching non-existent URLs
-    with open(schema_path, 'r') as f:
+    with open(schema_path, "r") as f:
         schema_dict = json.load(f)
 
     # Remove the remote $id to avoid ref resolution issues
-    if '$id' in schema_dict:
-        del schema_dict['$id']
+    if "$id" in schema_dict:
+        del schema_dict["$id"]
 
-    # Generate models using datamodel-code-generator with modified schema
+    # Convert back to JSON string to avoid version-specific issues with dict input
+    schema_json = json.dumps(schema_dict)
+
+    # Generate models using datamodel-code-generator
     generated_code = generate(
-        input_=schema_dict,
+        input_=schema_json,
         input_file_type=InputFileType.JsonSchema,
         output_model_type=DataModelType.PydanticV2BaseModel,
         snake_case_field=False,
@@ -81,23 +90,23 @@ from pydantic import BaseModel, Field, RootModel
     final_code = header
 
     # Parse and process the generated code
-    lines = generated_code.split('\n')
+    lines = generated_code.split("\n")
     skip_imports = True
     for line in lines:
         # Skip all lines until we find the first class definition
         if skip_imports:
-            if line.startswith('class '):
+            if line.startswith("class "):
                 skip_imports = False
             else:
                 continue
 
         # Add all lines after imports
-        final_code += line + '\n'
+        final_code += line + "\n"
 
     # Ensure discriminated union is properly defined
-    if 'ClaudeEvent = Union[' not in final_code:
+    if "ClaudeEvent = Union[" not in final_code:
         # Add the union if not present
-        final_code += '''
+        final_code += """
 
 # Discriminated union of all event types
 ClaudeEvent = Union[
@@ -112,7 +121,7 @@ ClaudeEvent = Union[
     ErrorEvent,
     RawEvent,
 ]
-'''
+"""
 
     # Add deserialization function
     final_code += '''
@@ -160,5 +169,6 @@ def deserialize_event(data: dict[str, Any]) -> ClaudeEvent:
 except Exception as e:
     print(f"Error generating models: {e}", file=sys.stderr)
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
