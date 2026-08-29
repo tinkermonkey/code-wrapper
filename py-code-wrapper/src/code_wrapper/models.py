@@ -14,95 +14,95 @@ from pydantic import BaseModel, Field, RootModel
 
 
 class TextEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["text"]
+    type: Literal['text']
     text: str
 
 
 class ThinkingEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["thinking"]
-    thinking: str = Field(..., description="Extended thinking content from the model")
+    type: Literal['thinking']
+    thinking: str = Field(..., description='Extended thinking content from the model')
 
 
 class ToolUseEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["tool_use"]
+    type: Literal['tool_use']
     id: str
     name: str
-    input: Any = Field(..., description="Full tool input as received from the CLI")
+    input: Any = Field(..., description='Full tool input as received from the CLI')
 
 
 class ToolResultEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["tool_result"]
+    type: Literal['tool_result']
     toolUseId: str
     isError: bool
     output: str = Field(
-        ..., description="Full combined text output from the tool result content blocks"
+        ..., description='Full combined text output from the tool result content blocks'
     )
 
 
 class ProgressEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["progress"]
-    elapsed: float = Field(..., description="Seconds elapsed since process start")
+    type: Literal['progress']
+    elapsed: float = Field(..., description='Seconds elapsed since process start')
 
 
 class ReadyEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["ready"]
+    type: Literal['ready']
     sessionId: str = Field(
         ...,
-        description="CLI-assigned session ID — available at process start, before the done event",
+        description='CLI-assigned session ID — available at process start, before the done event',
     )
-    model: Optional[str] = Field(None, description="Model being used for this run")
-    tools: Optional[list[str]] = Field(None, description="Names of tools available to the agent")
+    model: Optional[str] = Field(None, description='Model being used for this run')
+    tools: Optional[list[str]] = Field(None, description='Names of tools available to the agent')
     createdAt: Optional[str] = Field(
-        None, description="ISO 8601 timestamp when session was created (inspect mode only)"
+        None, description='ISO 8601 timestamp when session was created (inspect mode only)'
     )
     lastActiveAt: Optional[str] = Field(
-        None, description="ISO 8601 timestamp when session was last active (inspect mode only)"
+        None, description='ISO 8601 timestamp when session was last active (inspect mode only)'
     )
     cliSessionId: Optional[str] = Field(
-        None, description="CLI-assigned session ID from a prior conversation (inspect mode only)"
+        None, description='CLI-assigned session ID from a prior conversation (inspect mode only)'
     )
 
 
 class RetryEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["retry"]
-    attempt: float = Field(..., description="Attempt number (1-based)")
-    delayMs: Optional[float] = Field(None, description="Delay before this retry in milliseconds")
-    error: Optional[str] = Field(None, description="Error message that triggered the retry")
+    type: Literal['retry']
+    attempt: float = Field(..., description='Attempt number (1-based)')
+    delayMs: Optional[float] = Field(None, description='Delay before this retry in milliseconds')
+    error: Optional[str] = Field(None, description='Error message that triggered the retry')
 
 
 class Usage(BaseModel):
@@ -113,15 +113,15 @@ class Usage(BaseModel):
 
 
 class DoneEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["done"]
+    type: Literal['done']
     sessionId: str = Field(
         ...,
-        description="CLI-assigned session ID — store this and pass as sessionId on the next turn",
+        description='CLI-assigned session ID — store this and pass as sessionId on the next turn',
     )
     usage: Optional[Usage] = None
     resultText: Optional[str] = Field(
@@ -143,64 +143,64 @@ class DoneEvent(BaseModel):
 
 
 class RawEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["raw"]
+    type: Literal['raw']
     rawType: str = Field(..., description="The 'type' field from the raw CLI event")
     rawSubtype: Optional[str] = Field(None, description="The 'subtype' field if present")
-    data: Any = Field(..., description="The full raw parsed JSON object — nothing is discarded")
+    data: Any = Field(..., description='The full raw parsed JSON object — nothing is discarded')
 
 
 class BaseEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
     type: Literal[
-        "text",
-        "thinking",
-        "tool_use",
-        "tool_result",
-        "progress",
-        "ready",
-        "retry",
-        "done",
-        "error",
-        "raw",
+        'text',
+        'thinking',
+        'tool_use',
+        'tool_result',
+        'progress',
+        'ready',
+        'retry',
+        'done',
+        'error',
+        'raw',
     ]
 
 
 class WireProtocolVersion(RootModel[Literal[1]]):
     root: Literal[1] = Field(
-        ..., description="Wire protocol version literal for schema validation."
+        ..., description='Wire protocol version literal for schema validation.'
     )
 
 
 class ErrorEvent(BaseModel):
-    v: Literal[1] = Field(..., description="Wire protocol version — added by exec binary on output")
+    v: Literal[1] = Field(..., description='Wire protocol version — added by exec binary on output')
     seq: float = Field(
-        ..., description="Monotonic across all events in a run — safe for replay and deduplication"
+        ..., description='Monotonic across all events in a run — safe for replay and deduplication'
     )
     timestamp: float
-    type: Literal["error"]
+    type: Literal['error']
     code: Literal[
-        "idle_timeout",
-        "max_timeout",
-        "nonzero_exit",
-        "rate_limit",
-        "spawn_error",
-        "internal_error",
-        "stale_session",
-        "parse_error",
-        "cli_error",
-        "wire_protocol_error",
-        "aborted",
-        "inspect_requires_session_dir",
-        "session_not_found",
+        'idle_timeout',
+        'max_timeout',
+        'nonzero_exit',
+        'rate_limit',
+        'spawn_error',
+        'internal_error',
+        'stale_session',
+        'parse_error',
+        'cli_error',
+        'wire_protocol_error',
+        'aborted',
+        'inspect_requires_session_dir',
+        'session_not_found',
     ]
     detail: str
     exitCode: Optional[float] = None
@@ -236,7 +236,7 @@ class ClaudeEventSchemaV1(
     ] = Field(
         ...,
         description='Wire protocol event format for code-wrapper binary NDJSON output. Each line in the NDJSON stream is a JSON object conforming to one of the ClaudeEvent discriminated union types. The top-level discriminator is the "type" field. Wire protocol version is indicated by the "v" field (currently 1). All events MUST include the "v" field set to 1 for this schema version.',
-        title="Claude Event Schema v1",
+        title='Claude Event Schema v1',
     )
 
 
