@@ -212,7 +212,7 @@ class CodeWrapper:
                             exitCode=None,
                         )
 
-        except (OSError, asyncio.CancelledError) as e:
+        except (OSError, asyncio.CancelledError, CodeWrapperProtocolError, CodeWrapperBinaryError) as e:
             exception_raised = e
         finally:
             # Track if we're about to terminate the process ourselves
