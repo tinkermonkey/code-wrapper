@@ -1,0 +1,59 @@
+# Production Dockerfile for code-wrapper distribution
+# Multi-stage build with size optimization
+
+# Stage 1: Builder - Download and prepare binaries
+FROM python:3.11-slim as builder
+
+WORKDIR /build
+
+# Install only what we need for pip
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install py-code-wrapper to get the bundled binary
+RUN pip install --target=/build/lib py-code-wrapper
+
+# Extract just the code-wrapper binary
+RUN find /build/lib -name "code-wrapper-linux-*" -type f -exec chmod +x {} \;
+
+# Stage 2: Runtime
+FROM python:3.11-slim
+
+# Install only production dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder (minimal set)
+COPY --from=builder /build/lib /usr/local/lib/python3.11/site-packages
+
+# Copy the binary to a standard location
+COPY --from=builder \
+    /build/lib/code_wrapper/binaries/code-wrapper-linux-x64 \
+    /usr/local/bin/code-wrapper
+
+# Ensure binary is executable and verify it works
+RUN chmod +x /usr/local/bin/code-wrapper && \
+    /usr/local/bin/code-wrapper --version
+
+# Create application directory
+WORKDIR /app
+
+# Set up environment
+ENV CODE_WRAPPER_BINARY=/usr/local/bin/code-wrapper
+ENV PYTHONUNBUFFERED=1
+
+# Copy application code
+COPY app /app
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run application
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

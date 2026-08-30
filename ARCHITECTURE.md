@@ -158,14 +158,15 @@ type ClaudeEvent =
 
 ```typescript
 type ErrorCode =
-  | 'idle_timeout'   // stdout silence exceeded idleTimeout
-  | 'max_timeout'    // wall-clock ceiling exceeded
-  | 'nonzero_exit'   // process exited with non-zero code
-  | 'rate_limit'     // inline rate_limit_event or stderr pattern
-  | 'stale_session'  // stderr: "No conversation found with session ID"
-  | 'spawn_error'    // process could not be started (ENOENT, EACCES, etc.)
-  | 'parse_error'    // line starts with '{' but is not valid JSON
-  | 'cli_error'      // inline error/error_detail/error_event from the CLI stream
+  | 'idle_timeout'         // stdout silence exceeded idleTimeout
+  | 'max_timeout'          // wall-clock ceiling exceeded
+  | 'nonzero_exit'         // process exited with non-zero code
+  | 'rate_limit'           // inline rate_limit_event or stderr pattern
+  | 'stale_session'        // stderr: "No conversation found with session ID"
+  | 'spawn_error'          // process could not be started (ENOENT, EACCES, etc.)
+  | 'parse_error'          // line starts with '{' but is not valid JSON
+  | 'cli_error'            // inline error/error_detail/error_event from the CLI stream
+  | 'wire_protocol_error'  // wire protocol violation (internal binary bug)
 ```
 
 ### Raw stream-json → ClaudeEvent mapping

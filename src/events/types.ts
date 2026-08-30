@@ -11,6 +11,8 @@ export type ClaudeEventType =
   | 'raw';
 
 export interface BaseEvent {
+  /** Wire protocol version — added by exec binary on output */
+  v?: number;
   /** Monotonic across all events in a run — safe for replay and deduplication */
   seq: number;
   timestamp: number;
@@ -58,6 +60,12 @@ export interface ReadyEvent extends BaseEvent {
   model?: string;
   /** Names of tools available to the agent */
   tools?: string[];
+  /** ISO 8601 timestamp when session was created (inspect mode only) */
+  createdAt?: string;
+  /** ISO 8601 timestamp when session was last active (inspect mode only) */
+  lastActiveAt?: string;
+  /** CLI-assigned session ID from a prior conversation (inspect mode only) */
+  cliSessionId?: string;
 }
 
 export interface RetryEvent extends BaseEvent {
@@ -104,16 +112,19 @@ export interface DoneEvent extends BaseEvent {
 }
 
 export type ErrorCode =
-  | 'idle_timeout'    // stdout silence exceeded idleTimeout
-  | 'max_timeout'     // wall-clock ceiling exceeded
-  | 'nonzero_exit'    // process exited with non-zero code
-  | 'rate_limit'      // rate limit hit (inline event or stderr pattern)
-  | 'spawn_error'     // process could not be started (ENOENT, EACCES, etc.)
-  | 'internal_error'  // unexpected exception in generator body (programmer bug)
-  | 'stale_session'   // stderr: "No conversation found with session ID"
-  | 'parse_error'     // line starts with '{' but is not valid JSON
-  | 'cli_error'       // inline error/error_detail/error_event from the CLI stream
-  | 'aborted';        // cancelled via AbortSignal
+  | 'idle_timeout'               // stdout silence exceeded idleTimeout
+  | 'max_timeout'                // wall-clock ceiling exceeded
+  | 'nonzero_exit'               // process exited with non-zero code
+  | 'rate_limit'                 // rate limit hit (inline event or stderr pattern)
+  | 'spawn_error'                // process could not be started (ENOENT, EACCES, etc.)
+  | 'internal_error'             // unexpected exception in generator body (programmer bug)
+  | 'stale_session'              // stderr: "No conversation found with session ID"
+  | 'parse_error'                // line starts with '{' but is not valid JSON
+  | 'cli_error'                  // inline error/error_detail/error_event from the CLI stream
+  | 'wire_protocol_error'        // wire protocol violation (internal binary bug)
+  | 'aborted'                    // cancelled via AbortSignal
+  | 'inspect_requires_session_dir' // inspect mode requires --session-dir
+  | 'session_not_found';         // session not found in session store
 
 export interface ErrorEvent extends BaseEvent {
   type: 'error';

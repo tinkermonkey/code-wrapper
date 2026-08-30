@@ -1,0 +1,24 @@
+# Code-wrapper binary deployment defaults
+# Override these in group_vars, host_vars, or playbooks
+
+# Binary version to deploy (matches GitHub release tags)
+code_wrapper_version: "v0.1.0"
+
+# Installation directory (should be in PATH or set CODE_WRAPPER_BINARY env var)
+code_wrapper_install_dir: /usr/local/bin
+
+# Download and retry configuration
+code_wrapper_download_retries: 3
+code_wrapper_download_delay: 10
+code_wrapper_download_timeout: 300
+
+# File ownership and permissions
+code_wrapper_owner: root
+code_wrapper_group: root
+code_wrapper_mode: "0755"
+
+# Optional platform filter (empty = all supported platforms)
+# code_wrapper_platforms: ["linux-x64"]
+
+# Enable version tracking file
+code_wrapper_track_version: true

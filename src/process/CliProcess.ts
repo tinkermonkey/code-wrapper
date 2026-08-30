@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent, ReadyEvent } from '../events/types.js';
 import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
@@ -29,6 +29,25 @@ export class CliProcess {
   private activeProc: ChildProcess | null = null;
 
   constructor(private readonly backend: CliBackend = 'claude') {}
+
+  private sendSignal(proc: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
+    if (proc.pid == null) return;
+    try {
+      // Send signal directly to the child process. Child shares the parent's
+      // process group (spawned without detached flag), so an external signal to
+      // the process group (e.g., `kill -9 -<pgid>`, shell job control, systemd
+      // KillMode=control-group) will terminate the entire group. Note: a
+      // SIGKILL targeting only the child PID (e.g., `kill -9 <pid>`) will not
+      // reach the child's descendants; they become orphaned and are reparented
+      // to init/PID 1.
+      process.kill(proc.pid, signal);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== 'ESRCH') {
+        throw err;
+      }
+    }
+  }
 
   /** Returns true if the backend binary is found in PATH */
   async isAvailable(): Promise<boolean> {
@@ -81,10 +100,24 @@ export class CliProcess {
       delete env['CLAUDE_CODE_OAUTH_TOKEN'];
     }
 
+    const spawnOpts: SpawnOptions = {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'] as const,
+      env,
+      // Intentionally omit detached: true so the child process shares the parent's
+      // process group. This ensures that an external signal to the process group
+      // (e.g., kill -9 -<pgid>, systemd KillMode=control-group) will terminate
+      // both the binary and its children, achieving the safety requirement in Req 7.
+      // Trade-off: SIGKILL sent to the child PID (kill -9 <pid>) will not reach
+      // grandchildren (e.g., tool-execution subprocesses spawned by the CLI); they
+      // become orphaned and are reparented to init/PID 1. For "process group" level
+      // safety (the requirement), external signaling is sufficient.
+    };
+
     const proc = spawn(
       this.backend === 'claude' ? 'claude' : 'copilot',
       args,
-      { cwd, stdio: ['pipe', 'pipe', 'pipe'], env },
+      spawnOpts,
     );
 
     this.activeProc = proc;
@@ -162,14 +195,10 @@ export class CliProcess {
     const waitForEvent = (): Promise<void> =>
       new Promise<void>(r => { queueNotify = r; });
 
-    // Immediate heartbeat so callers receive a progress event at process start
-    // without waiting for the first watchdog tick.
     pushEvent({
       seq: seq++, timestamp: Date.now(), type: 'progress', elapsed: 0,
     } satisfies ProgressEvent);
 
-    // Spawn errors (ENOENT, EACCES, etc.) arrive asynchronously via 'error'.
-    // Save the event so it can be yielded after the consume loop drains.
     let spawnError: ErrorEvent | null = null;
     proc.on('error', (err: Error) => {
       spawnError = {
@@ -179,8 +208,6 @@ export class CliProcess {
       pushEvent(null);
     });
 
-    // Copilot: stateful ACP parser tracks sessionUuid across lines.
-    // Claude: stateless parseCliLine.
     const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
@@ -195,13 +222,11 @@ export class CliProcess {
 
     let sigkillTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // AbortSignal: kill the process and mark the reason so the correct
-    // ErrorEvent is yielded after the consume loop drains.
     const abortHandler = (): void => {
       if (killedBy) return;
       killedBy = 'aborted';
-      proc.kill('SIGTERM');
-      sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
+      this.sendSignal(proc, 'SIGTERM');
+      sigkillTimer = setTimeout(() => this.sendSignal(proc, 'SIGKILL'), _sigkillDelayMs);
     };
     if (signal) {
       signal.addEventListener('abort', abortHandler);
@@ -211,8 +236,6 @@ export class CliProcess {
       if (signal.aborted) abortHandler();
     }
 
-    // Watchdog: emit ProgressEvent each tick, then enforce timeouts.
-    // On timeout: SIGTERM first, SIGKILL after _sigkillDelayMs if still alive.
     const watchdog = setInterval(() => {
       const now = Date.now();
       if (killedBy) return;
@@ -222,12 +245,12 @@ export class CliProcess {
       } satisfies ProgressEvent);
       if (now - lastOutputAt > idleTimeout * 1_000) {
         killedBy = 'idle';
-        proc.kill('SIGTERM');
-        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
+        this.sendSignal(proc, 'SIGTERM');
+        sigkillTimer = setTimeout(() => this.sendSignal(proc, 'SIGKILL'), _sigkillDelayMs);
       } else if (now - startedAt > maxTimeout * 1_000) {
         killedBy = 'max';
-        proc.kill('SIGTERM');
-        sigkillTimer = setTimeout(() => proc.kill('SIGKILL'), _sigkillDelayMs);
+        this.sendSignal(proc, 'SIGTERM');
+        sigkillTimer = setTimeout(() => this.sendSignal(proc, 'SIGKILL'), _sigkillDelayMs);
       }
     }, _watchdogIntervalMs);
 
@@ -339,10 +362,11 @@ export class CliProcess {
   /** SIGTERM the active subprocess, escalating to SIGKILL after gracePeriodMs */
   async kill(gracePeriodMs = 3_000): Promise<void> {
     const proc = this.activeProc;
-    if (!proc) return;
-    proc.kill('SIGTERM');
+    if (!proc || proc.pid == null) return;
+
+    this.sendSignal(proc, 'SIGTERM');
     await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { proc.kill('SIGKILL'); resolve(); }, gracePeriodMs);
+      const timer = setTimeout(() => { this.sendSignal(proc, 'SIGKILL'); resolve(); }, gracePeriodMs);
       proc.once('close', () => { clearTimeout(timer); resolve(); });
     });
     this.activeProc = null;

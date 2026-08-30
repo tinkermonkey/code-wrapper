@@ -1,0 +1,135 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate schema
+        run: npm run generate-schema
+
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - target: bun-linux-x64
+            outfile: code-wrapper-linux-x64
+          - target: bun-linux-arm64
+            outfile: code-wrapper-linux-arm64
+          - target: bun-darwin-x64
+            outfile: code-wrapper-darwin-x64
+            runner: macos-latest
+          - target: bun-darwin-arm64
+            outfile: code-wrapper-darwin-arm64
+            runner: macos-14
+    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary for ${{ matrix.target }}
+        run: |
+          bun build --compile --target=${{ matrix.target }} --define "process.env.CODE_WRAPPER_VERSION='\"${{ github.ref_name }}\"'" src/cli/exec.ts --outfile dist/${{ matrix.outfile }}
+          chmod +x dist/${{ matrix.outfile }}
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256 || shasum -a 256 ${{ matrix.outfile }} > ${{ matrix.outfile }}.sha256
+          cat ${{ matrix.outfile }}.sha256
+
+      - name: Upload binary to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/${{ matrix.outfile }}
+            dist/${{ matrix.outfile }}.sha256
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-body:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release body comment
+        uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ## code-wrapper Binary Release
+
+            Platform-specific standalone binaries are now available for deployment to fleet hosts and containers.
+
+            **No Node.js runtime required** — all binaries are fully self-contained.
+
+            ### Available Binaries
+
+            - `code-wrapper-linux-x64` — Linux AMD64/x86_64
+            - `code-wrapper-linux-arm64` — Linux ARM64/aarch64 (AWS Graviton)
+            - `code-wrapper-darwin-x64` — macOS Intel
+            - `code-wrapper-darwin-arm64` — macOS Apple Silicon (M1+)
+
+            ### Distribution Options
+
+            1. **Direct Download** (manual deployment)
+               ```bash
+               wget https://github.com/tinkermonkey/code-wrapper/releases/download/${{ github.ref_name }}/code-wrapper-linux-x64
+               chmod +x code-wrapper-linux-x64
+               ./code-wrapper-linux-x64 --version
+               ```
+
+            2. **Docker** (with py-code-wrapper)
+               ```dockerfile
+               FROM python:3.11
+               RUN pip install py-code-wrapper
+               ```
+
+            3. **Ansible** (fleet hosts)
+               ```yaml
+               - include_role:
+                   name: code-wrapper
+                 vars:
+                   code_wrapper_version: ${{ github.ref_name }}
+               ```
+
+            ### Documentation
+
+            - [Distribution Guide](https://github.com/tinkermonkey/code-wrapper/blob/main/docs/DISTRIBUTION.md) — Complete deployment guide
+            - [Examples](https://github.com/tinkermonkey/code-wrapper/tree/main/examples) — Docker, Ansible, Docker Compose
+            - [py-code-wrapper](https://github.com/tinkermonkey/code-wrapper/blob/main/py-code-wrapper/README.md) — Python package info
+
+            ### Checksums
+
+            SHA256 checksum files (`.sha256`) are included for each binary. Verify with: `sha256sum -c code-wrapper-linux-x64.sha256`
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
