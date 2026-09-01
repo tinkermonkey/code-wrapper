@@ -115,9 +115,9 @@ it('binaryName() resolves to agy for antigravity backend', async () => {
 
 // ---------------------------------------------------------------- argument building
 describe('buildAntigravityArgs', () => {
-  it('includes -p with the prompt', async () => {
+  it('passes prompt via stdin', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
-    // This is tested indirectly by running the process; the prompt must be passed
+    // This is tested indirectly by running the process; the prompt must be passed via stdin
     const events = await collect({ prompt: 'special test prompt' });
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
@@ -142,10 +142,10 @@ describe('buildAntigravityArgs', () => {
 });
 
 // ---------------------------------------------------------------- stdin handling
-it('stdin is closed immediately after spawn without writing', async () => {
+it('writes prompt to stdin then closes it', async () => {
   process.env.FAKE_SCENARIO = 'golden-path';
   const events = await collect();
-  // If stdin wasn't closed properly, the process might hang or behave oddly
+  // The prompt is delivered via stdin and then stdin is closed
   // The fact that we get a complete event stream confirms proper stdin handling
   expect(events.some(e => e.type === 'done')).toBe(true);
   expect(events.filter(e => e.type === 'error')).toHaveLength(0);

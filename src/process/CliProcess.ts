@@ -22,7 +22,7 @@ const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
  *   persisted session is loaded by session/new, which hands back a NEW
  *   session UUID rather than reusing the old one.
  *
- * Antigravity: prompt via `-p` CLI flag; NDJSON stream-json output parsed
+ * Antigravity: prompt via stdin; NDJSON stream-json output parsed
  *   into typed events by createAntigravityStreamParser(). Session resume via
  *   `--conversation <id>` CLI flag.
  *
