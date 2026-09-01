@@ -3,7 +3,7 @@ export type CliBackend = 'claude' | 'copilot' | 'antigravity';
 export interface ProcessOptions {
   /** Working directory for the CLI subprocess */
   cwd: string;
-  /** Prompt delivered via stdin */
+  /** Prompt text to deliver to the CLI */
   prompt: string;
   /** Agent or skill to invoke (e.g. 'dr-architect') */
   agent?: string;

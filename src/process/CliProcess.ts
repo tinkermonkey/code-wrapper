@@ -10,16 +10,21 @@ const RATE_LIMIT_RE =
 const STALE_SESSION_RE = /no conversation found with session id/i;
 
 /**
- * Spawns an AI coding agent CLI (Claude Code or GitHub Copilot), delivers a
- * prompt, and yields a normalized stream of ClaudeEvents.
+ * Spawns an AI coding agent CLI (Claude Code, GitHub Copilot, or Antigravity),
+ * delivers a prompt, and yields a normalized stream of ClaudeEvents.
  *
  * Claude Code: prompt via stdin; stream-json output parsed into typed events.
+ *
  * Copilot: ACP protocol (copilot --acp --stdio); NDJSON JSON-RPC over
  *   stdin/stdout; initialize → session/new → session/prompt handshake;
  *   stateful parser produced by createCopilotAcpParser() tracks sessionUuid.
  *   Resume uses the same handshake (plus a --resume=<uuid> CLI flag) — the
  *   persisted session is loaded by session/new, which hands back a NEW
  *   session UUID rather than reusing the old one.
+ *
+ * Antigravity: prompt via `-p` CLI flag; NDJSON stream-json output parsed
+ *   into typed events by createAntigravityStreamParser(). Session resume via
+ *   `--conversation <id>` CLI flag.
  *
  * The caller is responsible for routing events — this class has no opinion
  * on whether they go to a WebSocket, Redis, SSE response, or an in-process
@@ -50,9 +55,12 @@ export class CliProcess {
   }
 
   private binaryName(): string {
-    if (this.backend === 'claude') return 'claude';
-    if (this.backend === 'copilot') return 'copilot';
-    return 'agy';
+    switch (this.backend) {
+      case 'claude': return 'claude';
+      case 'copilot': return 'copilot';
+      case 'antigravity': return 'agy';
+      default: { const _: never = this.backend; throw new Error(`Unknown backend: ${this.backend}`); }
+    }
   }
 
   /** Returns true if the backend binary is found in PATH */
