@@ -60,11 +60,13 @@ The calling application wires all three together. The module imposes no threadin
  │      │           ┌─ select parser ─┐                        │
  │      │           │                  │                       │
  │      │    [Claude]  [Copilot]  [Antigravity]               │
- │      │    parseCliLine()  ┌──────────────────┐              │
- │      │         │          │ createAntipavity │              │
- │      │         │          │ StreamParser()   │              │
- │      │         ▼          ▼                  │              │
- │      │           → normalized ClaudeEvent ← │               │
+ │      │       │         │             │                     │
+ │      │   parseCliLine  createCopilot  createAntigravity    │
+ │      │                 AcpParser()    StreamParser()       │
+ │      │       │         │             │                     │
+ │      │       └────┬────┴─────────────┘                     │
+ │      │            ▼                                         │
+ │      │    normalized ClaudeEvent                            │
  │      │                  │                   │               │
  │      │                  ▼                                   │
  │      │           push ──▶ shared async queue                │

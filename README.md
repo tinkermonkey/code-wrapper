@@ -57,7 +57,7 @@ for await (const event of proc.run({
   prompt: userMessage,
   skipPermissions: true,
   sessionId: session.cliSessionId,   // undefined on first turn — no session flag passed
-  isFirstMessage: session.isFirst,   // true → --session-id/--conversation; false → --resume/--conversation
+  isFirstMessage: session.isFirst,   // true → --session-id (Claude); false → --resume (Claude) / --conversation (Antigravity)
 })) {
   switch (event.type) {
     case 'ready':
