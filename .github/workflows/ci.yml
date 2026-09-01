@@ -59,7 +59,7 @@ jobs:
       # src/code_wrapper/models.py. Only runs when files that can affect
       # that output actually changed (see the `changes` job above).
       - if: needs.changes.outputs.python-models == 'true'
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.9"
           cache: pip

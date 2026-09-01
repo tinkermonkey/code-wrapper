@@ -3,7 +3,7 @@
 # ============================================================================
 # Builds the AGENT IMAGE for Claude agents to operate within.
 # Source code is mounted at runtime via:
-#   docker run -v /host/project:/workspace/code-wrapper ...
+#   docker run -v /host/project:/workspace ...
 # ============================================================================
 
 # ============================================================================
@@ -34,7 +34,7 @@ RUN chmod +x /usr/local/bin/agent-entrypoint.sh
 # ============================================================================
 # Stage 3: Pre-install Dependencies
 # ============================================================================
-WORKDIR /workspace/code-wrapper
+WORKDIR /workspace
 
 # Copy only the dependency manifest for installation.
 # Source code comes from the runtime mount.
@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=/root/.npm \
 # ============================================================================
 # Stage 4: Ownership and Permissions
 # ============================================================================
-RUN chown -R orchestrator:orchestrator /workspace/code-wrapper/node_modules
+RUN chown -R orchestrator:orchestrator /workspace/node_modules
 
 # ============================================================================
 # Stage 5: Switch to Runtime User
