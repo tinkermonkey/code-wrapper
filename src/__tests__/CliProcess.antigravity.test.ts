@@ -160,6 +160,30 @@ it('nonzero exit → ErrorEvent { nonzero_exit, exitCode: 1 }', async () => {
   });
 });
 
+it('stale-session error → ErrorEvent { stale_session }', async () => {
+  process.env.FAKE_SCENARIO = 'stale-session';
+  const events = await collect();
+  expect(events.find(e => e.type === 'error')).toMatchObject({
+    type: 'error', code: 'stale_session',
+  });
+});
+
+it('rate-limit error → ErrorEvent { rate_limit }', async () => {
+  process.env.FAKE_SCENARIO = 'rate-limit';
+  const events = await collect();
+  expect(events.find(e => e.type === 'error')).toMatchObject({
+    type: 'error', code: 'rate_limit',
+  });
+});
+
+it('generic error-event → ErrorEvent { cli_error }', async () => {
+  process.env.FAKE_SCENARIO = 'error-event';
+  const events = await collect();
+  expect(events.find(e => e.type === 'error')).toMatchObject({
+    type: 'error', code: 'cli_error',
+  });
+});
+
 // ---------------------------------------------------------------- spawn errors
 // Note: We can't easily test spawn errors with a fake binary in PATH,
 // but the spawn_error path is tested through the copilot tests and is

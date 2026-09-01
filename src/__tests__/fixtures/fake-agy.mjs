@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 /**
- * Fake Antigravity CLI binary for integration tests — speaks stream-json NDJSON.
- * Reads prompt via -p flag, writes NDJSON stream-json events to stdout.
+ * Fake Antigravity CLI binary for integration tests — speaks Antigravity NDJSON format.
+ * Reads prompt via -p flag, writes NDJSON events to stdout.
  *
  * Scenarios (FAKE_SCENARIO env var):
- *   golden-path        normal completion with message_delta and done events
+ *   golden-path        normal completion with init, step_update, and result events
  *   resume             with --conversation <id> arg, validates the arg and returns completion
- *   stall              emits one message_delta, then stalls; exits on SIGTERM
- *   ignore-sigterm     emits one message_delta, then stalls; ignores SIGTERM
- *   nonzero-exit       emits one message, then exits with code 1
+ *   stall              emits one step_update, then stalls; exits on SIGTERM
+ *   ignore-sigterm     emits one step_update, then stalls; ignores SIGTERM
+ *   nonzero-exit       emits one step_update, then exits with code 1
+ *   stale-session      emits error event with "conversation not found" message
+ *   rate-limit         emits error event with "rate limit" message
+ *   error-event        emits generic error event
  */
 import { parseArgs } from 'node:util';
 
@@ -115,6 +118,39 @@ if (scenario !== 'stall' && scenario !== 'ignore-sigterm') {
         step_update: {
           step_type: 'agent_response',
           text_delta: 'Starting response...\n',
+        },
+      });
+      process.exit(1);
+      break;
+    }
+    case 'stale-session': {
+      // Emit error event with stale session message
+      emit({
+        event: 'error',
+        error: {
+          message: 'Conversation not found with session ID: ' + sessionId,
+        },
+      });
+      process.exit(1);
+      break;
+    }
+    case 'rate-limit': {
+      // Emit error event with rate limit message
+      emit({
+        event: 'error',
+        error: {
+          message: 'Rate limit exceeded: please wait before trying again',
+        },
+      });
+      process.exit(1);
+      break;
+    }
+    case 'error-event': {
+      // Emit generic error event
+      emit({
+        event: 'error',
+        error: {
+          message: 'An unexpected error occurred',
         },
       });
       process.exit(1);
