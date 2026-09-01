@@ -9,6 +9,7 @@ import type {
   DoneEvent,
   ErrorEvent,
   RawEvent,
+  ErrorCode,
 } from './types.js';
 
 // Raw shapes from --output-format stream-json --verbose --print
@@ -216,6 +217,170 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
   }
 
   return events;
+}
+
+/**
+ * Stateful parser factory for Antigravity's `--output-format stream-json` NDJSON stream.
+ *
+ * Returns a closure that parses NDJSON JSON lines with an `event` discriminator into
+ * normalized ClaudeEvents. Call once per CliProcess.run() invocation so all lines
+ * in a session share the same conversationId state.
+ *
+ * Antigravity event → ClaudeEvent mapping:
+ *   init                              → ReadyEvent with sessionId from conversation_id
+ *   step_update (agent_response)      → TextEvent
+ *   step_update (tool, ACTIVE)        → ToolUseEvent
+ *   step_update (tool, DONE)          → ToolResultEvent
+ *   step_update (other step_type)     → RawEvent (zero-loss fallback)
+ *   result                            → DoneEvent
+ *   error                             → ErrorEvent with code from regex heuristics
+ *   Any other event value             → RawEvent with rawType: 'antigravity/<event>'
+ *   Malformed JSON (line starts with '{') → ErrorEvent { code: 'parse_error' }
+ *   Plaintext lines                   → TextEvent
+ */
+export function createAntigravityStreamParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
+  let conversationId = '';
+
+  return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
+    if (!line.trim()) return [];
+    const timestamp = Date.now();
+    let seq = nextSeq;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let msg: any;
+
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      if (line.trimStart().startsWith('{')) {
+        return [{
+          seq, timestamp, type: 'error', code: 'parse_error',
+          detail: `Malformed JSON: ${line.slice(0, 200)}`,
+        } satisfies ErrorEvent];
+      }
+      return [{ seq, timestamp, type: 'text', text: line + '\n' } satisfies TextEvent];
+    }
+
+    const events: ClaudeEvent[] = [];
+    const event = msg.event as string | undefined;
+
+    if (event === 'init') {
+      const initData = msg.init as Record<string, unknown> | undefined;
+      conversationId = (msg.conversation_id as string) || '';
+      const toolsArray = Array.isArray(initData?.tools)
+        ? (initData.tools as Array<Record<string, unknown>>).map(t => (t?.name as string) ?? '').filter(n => n.length > 0)
+        : undefined;
+      events.push({
+        seq: seq++, timestamp, type: 'ready',
+        sessionId: conversationId,
+        ...(typeof initData?.model === 'string' && { model: initData.model }),
+        ...(toolsArray && { tools: toolsArray }),
+      } satisfies ReadyEvent);
+
+    } else if (event === 'step_update') {
+      const stepUpdate = msg.step_update as Record<string, unknown> | undefined;
+      const stepType = stepUpdate?.step_type as string | undefined;
+      const state = stepUpdate?.state as string | undefined;
+
+      if (stepType === 'agent_response') {
+        const textDelta = stepUpdate?.text_delta as string | undefined;
+        if (textDelta !== undefined) {
+          events.push({ seq: seq++, timestamp, type: 'text', text: textDelta } satisfies TextEvent);
+        }
+
+      } else if (stepType === 'tool') {
+        const toolInfo = stepUpdate?.tool_info as Record<string, unknown> | undefined;
+        const toolUseId = toolInfo?.tool_use_id as string | undefined;
+
+        if (state === 'ACTIVE' && toolUseId) {
+          events.push({
+            seq: seq++, timestamp, type: 'tool_use',
+            id: toolUseId,
+            name: (toolInfo?.name as string) || '',
+            input: (toolInfo?.parameters as unknown) || {},
+          } satisfies ToolUseEvent);
+
+        } else if (state === 'DONE' && toolUseId) {
+          const output = toolInfo?.output as string | undefined;
+          const error = toolInfo?.error as string | undefined;
+          events.push({
+            seq: seq++, timestamp, type: 'tool_result',
+            toolUseId,
+            isError: !!error,
+            output: error || output || '',
+          } satisfies ToolResultEvent);
+        } else {
+          // Unrecognized tool state or missing toolUseId — preserve as raw
+          events.push({
+            seq: seq++, timestamp, type: 'raw',
+            rawType: 'antigravity/step_update', rawSubtype: `tool_${state}`,
+            data: msg as unknown,
+          } satisfies RawEvent);
+        }
+
+      } else {
+        // Unrecognized step_type — preserve as raw (zero-loss fallback)
+        events.push({
+          seq: seq++, timestamp, type: 'raw',
+          rawType: 'antigravity/step_update', rawSubtype: stepType,
+          data: msg as unknown,
+        } satisfies RawEvent);
+      }
+
+    } else if (event === 'result') {
+      const result = msg.result as Record<string, unknown> | undefined;
+      const usage = result?.usage as Record<string, number> | undefined;
+      const status = result?.status as string | undefined;
+
+      events.push({
+        seq: seq++, timestamp, type: 'done',
+        sessionId: (result?.conversation_id as string) || conversationId,
+        ...(usage && {
+          usage: {
+            inputTokens: (usage.input_tokens ?? 0) as number,
+            outputTokens: (usage.output_tokens ?? 0) as number,
+          },
+        }),
+        ...(typeof result?.duration_seconds === 'number' && {
+          durationMs: result.duration_seconds * 1000,
+        }),
+        ...(typeof result?.num_turns === 'number' && { numTurns: result.num_turns }),
+        ...(status !== 'success' && { isError: true }),
+      } satisfies DoneEvent);
+
+    } else if (event === 'error') {
+      const error = msg.error as Record<string, unknown> | undefined;
+      const message = (error?.message as string) || '';
+      const code = classifyAntigravityError(message);
+
+      events.push({
+        seq: seq++, timestamp, type: 'error',
+        code, detail: message,
+      } satisfies ErrorEvent);
+
+    } else {
+      // Unrecognized event value — preserve as raw so nothing is silently lost
+      events.push({
+        seq: seq++, timestamp, type: 'raw',
+        rawType: `antigravity/${event}`,
+        data: msg as unknown,
+      } satisfies RawEvent);
+    }
+
+    return events;
+  };
+}
+
+/**
+ * Classify an Antigravity error message via regex heuristics.
+ * Antigravity provides no structured error code, so we match against message text.
+ */
+function classifyAntigravityError(message: string): ErrorCode {
+  const STALE_SESSION_RE = /conversation.*not found/i;
+  const RATE_LIMIT_RE = /rate.?limit|quota.*exceeded/i;
+
+  if (STALE_SESSION_RE.test(message)) return 'stale_session' as const;
+  if (RATE_LIMIT_RE.test(message)) return 'rate_limit' as const;
+  return 'cli_error' as const;
 }
 
 /**
