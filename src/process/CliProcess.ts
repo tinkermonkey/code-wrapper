@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent, ReadyEvent } from '../events/types.js';
-import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser, createAntigravityStreamParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
@@ -49,9 +49,15 @@ export class CliProcess {
     }
   }
 
+  private binaryName(): string {
+    if (this.backend === 'claude') return 'claude';
+    if (this.backend === 'copilot') return 'copilot';
+    return 'agy';
+  }
+
   /** Returns true if the backend binary is found in PATH */
   async isAvailable(): Promise<boolean> {
-    const bin = this.backend === 'claude' ? 'claude' : 'copilot';
+    const bin = this.binaryName();
     const r = spawnSync('which', [bin], { stdio: 'pipe' });
     return r.status === 0;
   }
@@ -115,7 +121,7 @@ export class CliProcess {
     };
 
     const proc = spawn(
-      this.backend === 'claude' ? 'claude' : 'copilot',
+      this.binaryName(),
       args,
       spawnOpts,
     );
@@ -152,6 +158,10 @@ export class CliProcess {
       acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, capabilities: {} } });
       acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
       // stdin stays open — session/prompt is sent from the consume loop below
+    } else if (this.backend === 'antigravity') {
+      // Antigravity receives the prompt via -p flag, not stdin.
+      // Close stdin immediately after spawn without writing.
+      closeStdin();
     } else {
       proc.stdin!.write(prompt);
       closeStdin();
@@ -208,7 +218,11 @@ export class CliProcess {
       pushEvent(null);
     });
 
-    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
+    const parseLine = this.backend === 'copilot'
+      ? createCopilotAcpParser()
+      : this.backend === 'antigravity'
+      ? createAntigravityStreamParser()
+      : parseCliLine;
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
@@ -377,6 +391,10 @@ export class CliProcess {
       return this.buildCopilotArgs(options);
     }
 
+    if (this.backend === 'antigravity') {
+      return this.buildAntigravityArgs(options);
+    }
+
     const {
       skipPermissions = false,
       mcpConfigPath,
@@ -417,6 +435,40 @@ export class CliProcess {
     if (skipPermissions) args.push('--allow-all-tools');
     if (agent) args.push('--agent', agent);
     if (sessionId && !isFirstMessage) args.push(`--resume=${sessionId}`);
+    return args;
+  }
+
+  /**
+   * Build args for the Antigravity CLI (`agy`).
+   *
+   * Invocation: agy -p <prompt> --output-format stream-json
+   * The prompt is passed via the -p flag, not stdin.
+   * Stdin is closed immediately after spawn without writing.
+   *
+   * Session resume: --conversation <id> (when isFirstMessage is false)
+   * New session: no resume flag (when isFirstMessage is true or not provided)
+   *
+   * Note: mcpConfigPath is not passed to Antigravity as it uses its own MCP discovery.
+   */
+  private buildAntigravityArgs(options: ProcessOptions): string[] {
+    const {
+      prompt,
+      skipPermissions = false,
+      sessionId,
+      isFirstMessage = true,
+      agent,
+    } = options;
+
+    const args = ['-p', prompt, '--output-format', 'stream-json'];
+
+    if (skipPermissions) args.push('--dangerously-skip-permissions');
+
+    if (sessionId && !isFirstMessage) {
+      args.push('--conversation', sessionId);
+    }
+
+    if (agent) args.unshift('--agent', agent);
+
     return args;
   }
 }
