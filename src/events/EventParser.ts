@@ -227,16 +227,17 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  * in a session share the same conversationId state.
  *
  * Antigravity event → ClaudeEvent mapping:
- *   init                              → ReadyEvent with sessionId from conversation_id
- *   step_update (agent_response)      → TextEvent
- *   step_update (tool, ACTIVE)        → ToolUseEvent
- *   step_update (tool, DONE)          → ToolResultEvent
- *   step_update (other step_type)     → RawEvent (zero-loss fallback)
- *   result                            → DoneEvent
- *   error                             → ErrorEvent with code from regex heuristics
- *   Any other event value             → RawEvent with rawType: 'antigravity/<event>'
- *   Malformed JSON (line starts with '{') → ErrorEvent { code: 'parse_error' }
- *   Plaintext lines                   → TextEvent
+ *   init                                           → ReadyEvent with sessionId from conversation_id
+ *   step_update (agent_response + text_delta)     → TextEvent
+ *   step_update (agent_response, no text_delta)   → RawEvent (metadata-only)
+ *   step_update (tool, ACTIVE)                    → ToolUseEvent
+ *   step_update (tool, DONE)                      → ToolResultEvent
+ *   step_update (other step_type)                 → RawEvent (zero-loss fallback)
+ *   result                                        → DoneEvent
+ *   error                                         → ErrorEvent with code from regex heuristics
+ *   Any other event value                         → RawEvent with rawType: 'antigravity/<event>'
+ *   Malformed JSON (line starts with '{')         → ErrorEvent { code: 'parse_error' }
+ *   Plaintext lines                               → TextEvent
  */
 export function createAntigravityStreamParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
   let conversationId = '';
@@ -382,7 +383,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
  * Antigravity provides no structured error code, so we match against message text.
  */
 function classifyAntigravityError(message: string): ErrorCode {
-  const STALE_SESSION_RE = /conversation\s+(?:not\s+)?found|no\s+conversation/i;
+  const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
   const RATE_LIMIT_RE = /rate.?limit|quota.*exceeded/i;
 
   if (STALE_SESSION_RE.test(message)) return 'stale_session' as const;
