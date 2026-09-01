@@ -285,6 +285,13 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
         const textDelta = stepUpdate?.text_delta as string | undefined;
         if (textDelta !== undefined) {
           events.push({ seq: seq++, timestamp, type: 'text', text: textDelta } satisfies TextEvent);
+        } else {
+          // Metadata-only agent response (no text_delta, e.g. thinking, citations) — preserve as raw
+          events.push({
+            seq: seq++, timestamp, type: 'raw',
+            rawType: 'antigravity/step_update', rawSubtype: 'agent_response',
+            data: msg as unknown,
+          } satisfies RawEvent);
         }
 
       } else if (stepType === 'tool') {
@@ -375,7 +382,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
  * Antigravity provides no structured error code, so we match against message text.
  */
 function classifyAntigravityError(message: string): ErrorCode {
-  const STALE_SESSION_RE = /conversation.*not found/i;
+  const STALE_SESSION_RE = /conversation\s+(?:not\s+)?found|no\s+conversation/i;
   const RATE_LIMIT_RE = /rate.?limit|quota.*exceeded/i;
 
   if (STALE_SESSION_RE.test(message)) return 'stale_session' as const;

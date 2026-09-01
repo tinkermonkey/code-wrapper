@@ -687,13 +687,17 @@ describe('createAntigravityStreamParser', () => {
         expect(ev).toMatchObject({ type: 'text', text: '' });
       });
 
-      it('agent_response without text_delta → no event emitted', () => {
+      it('agent_response without text_delta → RawEvent (metadata-only)', () => {
         const parse = createAntigravityStreamParser();
-        const evs = parse(line({
+        const [ev] = parse(line({
           event: 'step_update',
           step_update: { step_type: 'agent_response' },
         }), 0);
-        expect(evs).toHaveLength(0);
+        expect(ev).toMatchObject({
+          type: 'raw',
+          rawType: 'antigravity/step_update',
+          rawSubtype: 'agent_response',
+        });
       });
     });
 

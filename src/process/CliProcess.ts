@@ -7,7 +7,7 @@ import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
   /hit\s+(?:your\s+)?limit.*?resets?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
-const STALE_SESSION_RE = /no conversation found with session id/i;
+const STALE_SESSION_RE = /conversation\s+(?:not\s+)?found|no\s+conversation/i;
 
 /**
  * Spawns an AI coding agent CLI (Claude Code, GitHub Copilot, or Antigravity),
