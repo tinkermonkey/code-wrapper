@@ -63,6 +63,8 @@ jobs:
         with:
           python-version: "3.9"
           cache: pip
+          check-latest: false
+          token: ${{ github.token }}
 
       - name: Verify Python models are up to date
         if: needs.changes.outputs.python-models == 'true'
