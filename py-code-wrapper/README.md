@@ -179,8 +179,8 @@ options = ClientOptions(
     max_timeout=3600,                      # hard wall-clock ceiling (s)
     skip_permissions=False,                # bypass permission checks
     agent="my-agent",                      # use a specific agent
-    mcp_config_path="/path/to/config.json",  # MCP configuration
-    backend="claude",                      # "claude" or "copilot"
+    mcp_config_path="/path/to/config.json",  # MCP configuration (Claude only)
+    backend="claude",                      # "claude", "copilot", or "antigravity"
 )
 ```
 
