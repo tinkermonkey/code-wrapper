@@ -855,6 +855,7 @@ describe('createAntigravityStreamParser', () => {
       expect(ev.usage).toBeUndefined();
       expect(ev.durationMs).toBeUndefined();
       expect(ev.numTurns).toBeUndefined();
+      expect(ev.isError).toBeUndefined();
     });
   });
 

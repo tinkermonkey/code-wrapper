@@ -344,7 +344,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
           durationMs: result.duration_seconds * 1000,
         }),
         ...(typeof result?.num_turns === 'number' && { numTurns: result.num_turns }),
-        ...(status !== 'success' && { isError: true }),
+        ...(status !== undefined && status !== 'success' && { isError: true }),
       } satisfies DoneEvent);
 
     } else if (event === 'error') {
