@@ -150,29 +150,43 @@ export class CliProcess {
       proc.stdin!.write(JSON.stringify(msg) + '\n');
     };
 
-    if (this.backend === 'copilot') {
-      // ACP handshake over stdin/stdout. Copilot v1.0.68+ requires:
-      //   - protocolVersion as integer (not string)
-      //   - session/prompt.sessionId from the session/new ack
-      //   - session/prompt.prompt as [{type:'text',text:...}] array
-      // Real Copilot persists ACP sessions to disk under a UUID. Resuming does
-      // NOT mean reusing that UUID directly in session/prompt — the CLI is
-      // launched with --resume=<uuid> (see buildCopilotArgs), and a fresh
-      // session/new call loads the persisted context and hands back a NEW
-      // session UUID. So new and resumed sessions send the identical
-      // initialize + session/new sequence here; session/prompt is sent
-      // reactively from the consume loop below once the ReadyEvent (sessionId
-      // from the session/new ack) is parsed from stdout.
-      acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, capabilities: {} } });
-      acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
-      // stdin stays open — session/prompt is sent from the consume loop below
-    } else if (this.backend === 'antigravity') {
-      // Antigravity receives the prompt via -p flag, not stdin.
-      // Close stdin immediately after spawn without writing.
-      closeStdin();
-    } else {
-      proc.stdin!.write(prompt);
-      closeStdin();
+    switch (this.backend) {
+      case 'copilot': {
+        // ACP handshake over stdin/stdout. Copilot v1.0.68+ requires:
+        //   - protocolVersion as integer (not string)
+        //   - session/prompt.sessionId from the session/new ack
+        //   - session/prompt.prompt as [{type:'text',text:...}] array
+        // Real Copilot persists ACP sessions to disk under a UUID. Resuming does
+        // NOT mean reusing that UUID directly in session/prompt — the CLI is
+        // launched with --resume=<uuid> (see buildCopilotArgs), and a fresh
+        // session/new call loads the persisted context and hands back a NEW
+        // session UUID. So new and resumed sessions send the identical
+        // initialize + session/new sequence here; session/prompt is sent
+        // reactively from the consume loop below once the ReadyEvent (sessionId
+        // from the session/new ack) is parsed from stdout.
+        acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, capabilities: {} } });
+        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
+        // stdin stays open — session/prompt is sent from the consume loop below
+        break;
+      }
+      case 'antigravity': {
+        // Antigravity receives the prompt via stdin, like Claude.
+        // This keeps prompts with sensitive information (API keys, PII) out of the
+        // process argument list (visible via ps/proc), mitigating exposure risks.
+        proc.stdin!.write(prompt);
+        closeStdin();
+        break;
+      }
+      case 'claude': {
+        // Claude receives the prompt via stdin.
+        proc.stdin!.write(prompt);
+        closeStdin();
+        break;
+      }
+      default: {
+        const _: never = this.backend;
+        throw new Error(`Unknown backend: ${_}`);
+      }
     }
 
     let seq = 0;
@@ -226,11 +240,17 @@ export class CliProcess {
       pushEvent(null);
     });
 
-    const parseLine = this.backend === 'copilot'
-      ? createCopilotAcpParser()
-      : this.backend === 'antigravity'
-      ? createAntigravityStreamParser()
-      : parseCliLine;
+    const parseLine = (() => {
+      switch (this.backend) {
+        case 'copilot': return createCopilotAcpParser();
+        case 'antigravity': return createAntigravityStreamParser();
+        case 'claude': return parseCliLine;
+        default: {
+          const _: never = this.backend;
+          throw new Error(`Unknown backend: ${_}`);
+        }
+      }
+    })();
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
@@ -395,34 +415,40 @@ export class CliProcess {
   }
 
   private buildArgs(options: ProcessOptions): string[] {
-    if (this.backend === 'copilot') {
-      return this.buildCopilotArgs(options);
+    switch (this.backend) {
+      case 'copilot': {
+        return this.buildCopilotArgs(options);
+      }
+      case 'antigravity': {
+        return this.buildAntigravityArgs(options);
+      }
+      case 'claude': {
+        const {
+          skipPermissions = false,
+          mcpConfigPath,
+          sessionId,
+          isFirstMessage = true,
+          agent,
+        } = options;
+
+        const args = ['--print', '--verbose', '--output-format', 'stream-json'];
+
+        if (skipPermissions) args.push('--permission-mode', 'bypassPermissions');
+        if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+
+        if (sessionId) {
+          args.push(isFirstMessage ? '--session-id' : '--resume', sessionId);
+        }
+
+        if (agent) args.unshift('--agent', agent);
+
+        return args;
+      }
+      default: {
+        const _: never = this.backend;
+        throw new Error(`Unknown backend: ${_}`);
+      }
     }
-
-    if (this.backend === 'antigravity') {
-      return this.buildAntigravityArgs(options);
-    }
-
-    const {
-      skipPermissions = false,
-      mcpConfigPath,
-      sessionId,
-      isFirstMessage = true,
-      agent,
-    } = options;
-
-    const args = ['--print', '--verbose', '--output-format', 'stream-json'];
-
-    if (skipPermissions) args.push('--permission-mode', 'bypassPermissions');
-    if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
-
-    if (sessionId) {
-      args.push(isFirstMessage ? '--session-id' : '--resume', sessionId);
-    }
-
-    if (agent) args.unshift('--agent', agent);
-
-    return args;
   }
 
   /**
@@ -449,9 +475,9 @@ export class CliProcess {
   /**
    * Build args for the Antigravity CLI (`agy`).
    *
-   * Invocation: agy -p <prompt> --output-format stream-json
-   * The prompt is passed via the -p flag, not stdin.
-   * Stdin is closed immediately after spawn without writing.
+   * Invocation: agy --output-format stream-json
+   * The prompt is passed via stdin, not as a flag, to avoid exposure in process listings.
+   * This keeps sensitive information (API keys, PII, credentials) out of ps/proc.
    *
    * Session resume: --conversation <id> (when isFirstMessage is false)
    * New session: no resume flag (when isFirstMessage is true or not provided)
@@ -460,14 +486,13 @@ export class CliProcess {
    */
   private buildAntigravityArgs(options: ProcessOptions): string[] {
     const {
-      prompt,
       skipPermissions = false,
       sessionId,
       isFirstMessage = true,
       agent,
     } = options;
 
-    const args = ['-p', prompt, '--output-format', 'stream-json'];
+    const args = ['--output-format', 'stream-json'];
 
     if (skipPermissions) args.push('--dangerously-skip-permissions');
 

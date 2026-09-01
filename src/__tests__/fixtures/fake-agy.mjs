@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Fake Antigravity CLI binary for integration tests — speaks Antigravity NDJSON format.
- * Reads prompt via -p flag, writes NDJSON events to stdout.
+ * Reads prompt via stdin, writes NDJSON events to stdout.
  *
  * Scenarios (FAKE_SCENARIO env var):
  *   golden-path        normal completion with init, step_update, and result events
@@ -20,7 +20,6 @@ const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\n');
 
 const { values: args } = parseArgs({
   options: {
-    p: { type: 'string' },
     'output-format': { type: 'string' },
     'dangerously-skip-permissions': { type: 'boolean' },
     conversation: { type: 'string' },
@@ -29,11 +28,20 @@ const { values: args } = parseArgs({
   allowPositionals: false,
 });
 
-const prompt = args.p;
-if (!prompt) {
-  process.stderr.write('Error: -p <prompt> is required\n');
-  process.exit(1);
-}
+// Read prompt from stdin
+let prompt = '';
+const chunks = [];
+process.stdin.on('data', (chunk) => chunks.push(chunk));
+await new Promise((resolve) => {
+  process.stdin.on('end', () => {
+    prompt = Buffer.concat(chunks).toString('utf-8');
+    if (!prompt) {
+      process.stderr.write('Error: prompt from stdin is required\n');
+      process.exit(1);
+    }
+    resolve();
+  });
+});
 
 if (scenario === 'resume' && !args.conversation) {
   process.stderr.write('Error: resume scenario requires --conversation <id>\n');
