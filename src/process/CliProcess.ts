@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent, ReadyEvent } from '../events/types.js';
-import { parseCliLine, createCopilotAcpParser, createGeminiStreamParser } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser, createGeminiStreamParser, createCursorStreamParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
@@ -59,6 +59,7 @@ export class CliProcess {
       case 'claude': return 'claude';
       case 'copilot': return 'copilot';
       case 'gemini': return 'gemini';
+      case 'cursor': return 'agent';
       default: { const _: never = this.backend; throw new Error(`Unknown backend: ${this.backend}`); }
     }
   }
@@ -183,6 +184,12 @@ export class CliProcess {
         closeStdin();
         break;
       }
+      case 'cursor': {
+        // Cursor receives the prompt via -p CLI flag (buildCursorArgs), not via stdin.
+        // Close stdin immediately since there's nothing to write.
+        closeStdin();
+        break;
+      }
       default: {
         const _: never = this.backend;
         throw new Error(`Unknown backend: ${_}`);
@@ -244,6 +251,7 @@ export class CliProcess {
       switch (this.backend) {
         case 'copilot': return createCopilotAcpParser();
         case 'gemini': return createGeminiStreamParser();
+        case 'cursor': return createCursorStreamParser();
         case 'claude': return parseCliLine;
         default: {
           const _: never = this.backend;
@@ -422,6 +430,9 @@ export class CliProcess {
       case 'gemini': {
         return this.buildGeminiArgs(options);
       }
+      case 'cursor': {
+        return this.buildCursorArgs(options);
+      }
       case 'claude': {
         const {
           skipPermissions = false,
@@ -501,6 +512,45 @@ export class CliProcess {
     }
 
     if (agent) args.unshift('--agent', agent);
+
+    return args;
+  }
+
+  /**
+   * Build args for the Cursor CLI (`agent`).
+   *
+   * Invocation: agent -p <prompt> --output-format stream-json [--workspace cwd] [--resume chatId] [--force] [--agent agent]
+   * The prompt is passed as the -p flag, not via stdin.
+   *
+   * Session resume: --resume <chatId> (when isFirstMessage is false)
+   */
+  private buildCursorArgs(options: ProcessOptions): string[] {
+    const {
+      prompt,
+      skipPermissions = false,
+      sessionId,
+      isFirstMessage = true,
+      agent,
+      cwd,
+    } = options;
+
+    const args = ['-p', prompt, '--output-format', 'stream-json'];
+
+    if (cwd !== undefined && cwd !== process.cwd()) {
+      args.push('--workspace', cwd);
+    }
+
+    if (skipPermissions) {
+      args.push('--force');
+    }
+
+    if (sessionId && !isFirstMessage) {
+      args.push('--resume', sessionId);
+    }
+
+    if (agent) {
+      args.push('--agent', agent);
+    }
 
     return args;
   }

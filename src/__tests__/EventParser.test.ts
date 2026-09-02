@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCliLine, createCopilotAcpParser, createGeminiStreamParser } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser, createGeminiStreamParser, createCursorStreamParser } from '../events/EventParser.js';
 import type {
   ReadyEvent,
   RetryEvent,
@@ -992,6 +992,356 @@ describe('createGeminiStreamParser', () => {
       const parse = createGeminiStreamParser();
       const before = Date.now();
       const [ev] = parse(line({ event: 'init', conversation_id: 'c', init: {} }), 0);
+      const after = Date.now();
+      expect(ev.timestamp).toBeGreaterThanOrEqual(before);
+      expect(ev.timestamp).toBeLessThanOrEqual(after);
+    });
+  });
+});
+
+describe('createCursorStreamParser', () => {
+  describe('system/init', () => {
+    it('full init → ReadyEvent with sessionId and model', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'system', subtype: 'init', session_id: 'chat-123', model: 'gpt-4',
+      }), 0) as [ReadyEvent];
+      expect(ev).toMatchObject({ type: 'ready', seq: 0, sessionId: 'chat-123', model: 'gpt-4' });
+    });
+
+    it('partial init (no model) → ReadyEvent without model', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'system', subtype: 'init', session_id: 'chat-456',
+      }), 5) as [ReadyEvent];
+      expect(ev.type).toBe('ready');
+      expect(ev.seq).toBe(5);
+      expect(ev.sessionId).toBe('chat-456');
+      expect(ev.model).toBeUndefined();
+    });
+
+    it('resets deduplication state on new session', () => {
+      const parse = createCursorStreamParser();
+      // First session init
+      parse(line({ type: 'system', subtype: 'init', session_id: 'sess-1' }), 0);
+      // Process an assistant event
+      const evs1 = parse(line({
+        type: 'assistant', text: 'hello', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 1) as [TextEvent];
+      expect(evs1).toHaveLength(1);
+
+      // New session init should reset deduplication state
+      parse(line({ type: 'system', subtype: 'init', session_id: 'sess-2' }), 2);
+      // The same timestamp/model_call_id in a new session should emit again
+      const evs2 = parse(line({
+        type: 'assistant', text: 'hello', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 3) as [TextEvent];
+      expect(evs2).toHaveLength(1);
+    });
+  });
+
+  describe('assistant (text output with deduplication)', () => {
+    it('single assistant event → TextEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'assistant', text: 'Hello world', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 0) as [TextEvent];
+      expect(ev).toMatchObject({ type: 'text', seq: 0, text: 'Hello world' });
+    });
+
+    it('empty text → no TextEvent', () => {
+      const parse = createCursorStreamParser();
+      const evs = parse(line({
+        type: 'assistant', text: '', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 0);
+      expect(evs).toHaveLength(0);
+    });
+
+    it('duplicate canonical event (same timestamp_ms and model_call_id) → skipped', () => {
+      const parse = createCursorStreamParser();
+      // First: canonical form with model_call_id
+      const evs1 = parse(line({
+        type: 'assistant', text: 'Hello', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 0) as [TextEvent];
+      expect(evs1).toHaveLength(1);
+
+      // Second: duplicate canonical event (same timestamp_ms and model_call_id)
+      const evs2 = parse(line({
+        type: 'assistant', text: 'Hello', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 1);
+      expect(evs2).toHaveLength(0);
+    });
+
+    it('multiple assistant events with different timestamps → all emitted', () => {
+      const parse = createCursorStreamParser();
+      const evs1 = parse(line({
+        type: 'assistant', text: 'First', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 0) as [TextEvent];
+      expect(evs1).toHaveLength(1);
+
+      const evs2 = parse(line({
+        type: 'assistant', text: 'Second', timestamp_ms: 200, model_call_id: 'call-2',
+      }), 1) as [TextEvent];
+      expect(evs2).toHaveLength(1);
+
+      expect(evs1[0].text).toBe('First');
+      expect(evs2[0].text).toBe('Second');
+    });
+
+    it('partial events (no model_call_id) are always skipped', () => {
+      const parse = createCursorStreamParser();
+      // Partial form (no model_call_id) is skipped
+      const evs1 = parse(line({
+        type: 'assistant', text: 'Hello', timestamp_ms: 100,
+      }), 0);
+      expect(evs1).toHaveLength(0);
+
+      // Canonical form (has model_call_id) is emitted
+      const evs2 = parse(line({
+        type: 'assistant', text: 'Hello', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 1) as [TextEvent];
+      expect(evs2).toHaveLength(1);
+      expect(evs2[0].text).toBe('Hello');
+    });
+
+    it('no ThinkingEvent is ever produced', () => {
+      const parse = createCursorStreamParser();
+      const evs = parse(line({
+        type: 'assistant', text: 'response', thinking: 'internal reasoning',
+      }), 0);
+      expect(evs.some(e => e.type === 'thinking')).toBe(false);
+    });
+  });
+
+  describe('tool_call/started', () => {
+    it('bash tool → ToolUseEvent with name "bash"', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'started', tool_call_id: 'tc-1',
+        bashToolCall: { input: { cmd: 'ls -la' } },
+      }), 0) as [ToolUseEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_use', seq: 0, id: 'tc-1', name: 'bash',
+        input: { cmd: 'ls -la' },
+      });
+    });
+
+    it('read tool → ToolUseEvent with name "read"', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'started', tool_call_id: 'tc-2',
+        readToolCall: { input: { path: '/file.txt' } },
+      }), 0) as [ToolUseEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_use', seq: 0, id: 'tc-2', name: 'read',
+        input: { path: '/file.txt' },
+      });
+    });
+
+    it('write tool → ToolUseEvent with name "write"', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'started', tool_call_id: 'tc-3',
+        writeToolCall: { input: { path: '/out.txt', content: 'data' } },
+      }), 0) as [ToolUseEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_use', seq: 0, id: 'tc-3', name: 'write',
+        input: { path: '/out.txt', content: 'data' },
+      });
+    });
+
+    it('missing tool_call_id → RawEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'started',
+        bashToolCall: { input: { cmd: 'ls' } },
+      }), 0) as [RawEvent];
+      expect(ev.type).toBe('raw');
+      expect(ev.rawType).toBe('tool_call');
+      expect(ev.rawSubtype).toBe('started');
+    });
+
+    it('unknown tool type → ToolUseEvent with name "unknown"', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'started', tool_call_id: 'tc-4',
+        futureToolCall: { input: { data: 'test' } },
+      }), 0) as [ToolUseEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_use', id: 'tc-4', name: 'unknown',
+      });
+    });
+  });
+
+  describe('tool_call/completed', () => {
+    it('bash tool with string result → ToolResultEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-1',
+        bashToolCall: { result: 'file1.txt\nfile2.txt' },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', seq: 0, toolUseId: 'tc-1',
+        output: 'file1.txt\nfile2.txt', isError: false,
+      });
+    });
+
+    it('read tool with string result → ToolResultEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-2',
+        readToolCall: { result: 'file contents' },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-2',
+        output: 'file contents', isError: false,
+      });
+    });
+
+    it('write tool with object result → ToolResultEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-3',
+        writeToolCall: { result: { output: 'File written' } },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-3',
+        output: 'File written', isError: false,
+      });
+    });
+
+    it('tool result with error → ToolResultEvent with isError=true', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-4',
+        bashToolCall: { result: { error: 'Command failed' } },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-4',
+        output: 'Command failed', isError: true,
+      });
+    });
+
+    it('missing tool_call_id → RawEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed',
+        bashToolCall: { result: 'output' },
+      }), 0) as [RawEvent];
+      expect(ev.type).toBe('raw');
+      expect(ev.rawType).toBe('tool_call');
+      expect(ev.rawSubtype).toBe('completed');
+    });
+  });
+
+  describe('result/success', () => {
+    it('result event → DoneEvent with sessionId and durationMs', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'result', subtype: 'success', session_id: 'chat-999',
+        duration_ms: 5000, result: 'Final answer',
+      }), 0) as [DoneEvent];
+      expect(ev).toMatchObject({
+        type: 'done', seq: 0, sessionId: 'chat-999',
+        durationMs: 5000, resultText: 'Final answer',
+      });
+    });
+
+    it('result event without duration_ms → DoneEvent without durationMs', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'result', subtype: 'success', session_id: 'chat-888',
+      }), 0) as [DoneEvent];
+      expect(ev.type).toBe('done');
+      expect(ev.sessionId).toBe('chat-888');
+      expect(ev.durationMs).toBeUndefined();
+      expect(ev.resultText).toBeUndefined();
+    });
+
+    it('result event without resultText → DoneEvent without resultText', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'result', subtype: 'success', session_id: 'chat-777',
+        duration_ms: 3000,
+      }), 0) as [DoneEvent];
+      expect(ev.type).toBe('done');
+      expect(ev.durationMs).toBe(3000);
+      expect(ev.resultText).toBeUndefined();
+    });
+  });
+
+  describe('unknown events', () => {
+    it('unknown event type → RawEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'future_event', subtype: 'unknown', data: { foo: 'bar' },
+      }), 0) as [RawEvent];
+      expect(ev.type).toBe('raw');
+      expect(ev.rawType).toBe('future_event');
+      expect(ev.rawSubtype).toBe('unknown');
+      expect(ev.data).toEqual({ type: 'future_event', subtype: 'unknown', data: { foo: 'bar' } });
+    });
+
+    it('known type with unknown subtype → RawEvent with rawSubtype', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'system', subtype: 'future_subtype', payload: 42,
+      }), 0) as [RawEvent];
+      expect(ev.type).toBe('raw');
+      expect(ev.rawType).toBe('system');
+      expect(ev.rawSubtype).toBe('future_subtype');
+    });
+  });
+
+  describe('error handling', () => {
+    it('malformed JSON (starts with {) → ErrorEvent with code parse_error', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse('{ invalid json', 0) as [ErrorEvent];
+      expect(ev).toMatchObject({
+        type: 'error', code: 'parse_error', detail: expect.stringContaining('Malformed JSON'),
+      });
+    });
+
+    it('plaintext line (no leading {) → TextEvent', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse('startup message', 0) as [TextEvent];
+      expect(ev).toMatchObject({ type: 'text', text: 'startup message\n' });
+    });
+  });
+
+  describe('empty and whitespace lines', () => {
+    it('empty line → no events', () => {
+      const parse = createCursorStreamParser();
+      const evs = parse('', 0);
+      expect(evs).toHaveLength(0);
+    });
+
+    it('whitespace-only line → no events', () => {
+      const parse = createCursorStreamParser();
+      const evs = parse('   ', 0);
+      expect(evs).toHaveLength(0);
+    });
+  });
+
+  describe('seq numbering', () => {
+    it('preserves and increments seq across multiple events', () => {
+      const parse = createCursorStreamParser();
+      const ev1s = parse(line({
+        type: 'system', subtype: 'init', session_id: 'chat-1',
+      }), 10);
+      const ev2s = parse(line({
+        type: 'assistant', text: 'hello', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 10 + ev1s.length);
+      expect(ev1s[0].seq).toBe(10);
+      expect(ev2s[0].seq).toBe(11);
+    });
+  });
+
+  describe('timestamp', () => {
+    it('each event has a timestamp', () => {
+      const parse = createCursorStreamParser();
+      const before = Date.now();
+      const [ev] = parse(line({ type: 'system', subtype: 'init', session_id: 'chat-1' }), 0);
       const after = Date.now();
       expect(ev.timestamp).toBeGreaterThanOrEqual(before);
       expect(ev.timestamp).toBeLessThanOrEqual(after);

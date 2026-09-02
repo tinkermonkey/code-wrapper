@@ -1,4 +1,4 @@
-export { parseCliLine, createCopilotAcpParser } from './EventParser.js';
+export { parseCliLine, createCopilotAcpParser, createGeminiStreamParser, createCursorStreamParser } from './EventParser.js';
 export type {
   ClaudeEvent,
   ClaudeEventType,
