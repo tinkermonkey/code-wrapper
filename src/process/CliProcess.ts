@@ -8,7 +8,7 @@ import type { CliBackend, ProcessOptions } from './types.js';
 const RATE_LIMIT_RE =
   /hit\s+(?:your\s+)?limit.*?resets?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
 const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
-const CURSOR_STALE_SESSION_RE = /chat\s+not\s+found|session\s+not\s+found|conversation\s+not\s+found|invalid\s+chat|not\s+found/i;
+const CURSOR_STALE_SESSION_RE = /chat\s+not\s+found|session\s+not\s+found|conversation\s+not\s+found|invalid\s+chat/i;
 
 /**
  * Spawns an AI coding agent CLI (Claude Code, GitHub Copilot, or Google Gemini),
@@ -78,7 +78,7 @@ export class CliProcess {
       const output = (r.stdout ?? '') + (r.stderr ?? '');
       // Cursor's version output typically includes "Cursor" or "agent" (Cursor branded)
       // Look for patterns that distinguish Cursor from other tools
-      return /cursor|Cursor/i.test(output) || output.length > 0;
+      return /cursor|Cursor/i.test(output);
     }
 
     const r = spawnSync('which', [bin], { stdio: 'pipe' });
