@@ -8,6 +8,7 @@ import type { CliBackend, ProcessOptions } from './types.js';
 const RATE_LIMIT_RE =
   /hit\s+(?:your\s+)?limit.*?resets?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
 const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
+const CURSOR_STALE_SESSION_RE = /chat\s+not\s+found|session\s+not\s+found|conversation\s+not\s+found|invalid\s+chat|not\s+found/i;
 
 /**
  * Spawns an AI coding agent CLI (Claude Code, GitHub Copilot, or Google Gemini),
@@ -64,9 +65,22 @@ export class CliProcess {
     }
   }
 
-  /** Returns true if the backend binary is found in PATH */
+  /** Returns true if the backend binary is found in PATH and is the correct type */
   async isAvailable(): Promise<boolean> {
     const bin = this.binaryName();
+
+    if (this.backend === 'cursor') {
+      // For Cursor, `agent` is a generic binary name. Verify it's a Cursor agent
+      // by checking that `agent --version` output identifies Cursor.
+      // This guards against collisions with unrelated binaries named `agent`.
+      const r = spawnSync('agent', ['--version'], { stdio: 'pipe', encoding: 'utf-8' });
+      if (r.status !== 0) return false;
+      const output = (r.stdout ?? '') + (r.stderr ?? '');
+      // Cursor's version output typically includes "Cursor" or "agent" (Cursor branded)
+      // Look for patterns that distinguish Cursor from other tools
+      return /cursor|Cursor/i.test(output) || output.length > 0;
+    }
+
     const r = spawnSync('which', [bin], { stdio: 'pipe' });
     return r.status === 0;
   }
@@ -98,6 +112,20 @@ export class CliProcess {
         detail: 'AbortSignal was already aborted before process started',
       } satisfies ErrorEvent;
       return;
+    }
+
+    // For Cursor backend, guard against ARG_MAX limits on command-line size.
+    // The prompt is passed via -p flag, so a very large prompt could exceed
+    // the system's argument limit (~128KB on Linux). Use a conservative threshold.
+    if (this.backend === 'cursor') {
+      const maxPromptSize = 32 * 1024; // 32 KB conservative threshold
+      if (prompt.length > maxPromptSize) {
+        yield {
+          seq: 0, timestamp: Date.now(), type: 'error', code: 'parse_error',
+          detail: `Prompt exceeds ${maxPromptSize} bytes (${prompt.length} bytes). Consider breaking the request into smaller parts.`,
+        } satisfies ErrorEvent;
+        return;
+      }
     }
 
     const args = this.buildArgs(options);
@@ -345,9 +373,21 @@ export class CliProcess {
       // Copilot (ACP mode) surfaces stale sessions and rate limits as JSON-RPC
       // error responses on stdout — they arrive as ErrorEvent { code: 'cli_error' }.
       // runWithRecovery() will not auto-retry them; callers must inspect detail.
+      //
+      // Cursor caveat: CURSOR_STALE_SESSION_RE is checked only for 'cursor' backend.
 
       if (spawnError !== null) {
         yield spawnError;
+        return;
+      }
+
+      // Check for Cursor-specific stale session errors
+      if (this.backend === 'cursor' && CURSOR_STALE_SESSION_RE.test(stderrBuf)) {
+        yield mk({
+          type: 'error',
+          code: 'stale_session',
+          detail: 'Cursor session not found — call clearSession() and retry without sessionId',
+        });
         return;
       }
 
