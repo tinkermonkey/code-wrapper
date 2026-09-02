@@ -2,7 +2,7 @@
 
 Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the three universal concerns:
 
-1. **Process launch** — spawn `claude`, `copilot`, or `gemini` (Google Gemini), deliver prompt, enforce idle and max timeouts, tear down cleanly
+1. **Process launch** — spawn `claude`, `copilot`, `gemini` (Google Gemini), or `agent` (Cursor CLI), deliver prompt, enforce idle and max timeouts, tear down cleanly
 2. **Event normalization** — parse `--output-format stream-json` output into a typed `ClaudeEvent` stream with a monotonic `seq` on every event
 3. **Session management** — track CLI session IDs across turns, persist them to disk, detect and recover from stale sessions
 
