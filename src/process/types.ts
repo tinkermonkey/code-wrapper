@@ -1,4 +1,4 @@
-export type CliBackend = 'claude' | 'copilot' | 'antigravity';
+export type CliBackend = 'claude' | 'copilot' | 'gemini';
 
 export interface ProcessOptions {
   /** Working directory for the CLI subprocess */

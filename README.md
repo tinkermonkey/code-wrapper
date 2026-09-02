@@ -2,7 +2,7 @@
 
 Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the three universal concerns:
 
-1. **Process launch** — spawn `claude`, `copilot`, or `agy` (Antigravity), deliver prompt, enforce idle and max timeouts, tear down cleanly
+1. **Process launch** — spawn `claude`, `copilot`, or `gemini` (Google Gemini), deliver prompt, enforce idle and max timeouts, tear down cleanly
 2. **Event normalization** — parse `--output-format stream-json` output into a typed `ClaudeEvent` stream with a monotonic `seq` on every event
 3. **Session management** — track CLI session IDs across turns, persist them to disk, detect and recover from stale sessions
 
@@ -12,7 +12,7 @@ Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the t
 |---|---|---|
 | **Claude Code** | `claude` | ✓ Fully supported |
 | **GitHub Copilot** | `copilot` (via `gh extension`) | ✓ Fully supported |
-| **Antigravity** | `agy` | ✓ Fully supported |
+| **Google Gemini** | `gemini` | ✓ Fully supported |
 
 ## Requirements
 
@@ -20,7 +20,7 @@ Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the t
 - At least one CLI in PATH:
   - `claude` (Claude Code)
   - `copilot` (GitHub Copilot: `gh extension install github/gh-copilot`)
-  - `agy` (Antigravity)
+  - `gemini` (Google Gemini)
 
 ## Install
 
@@ -46,7 +46,7 @@ The `prepare` script runs `build` automatically on `npm install` from a git URL.
 ```typescript
 import { CliProcess, SessionManager } from '@tinkermonkey/code-wrapper';
 
-// Use 'claude', 'copilot', or 'antigravity'
+// Use 'claude', 'copilot', or 'gemini'
 const proc = new CliProcess('claude');
 const sessions = new SessionManager({ persistPath: './sessions.json' });
 
@@ -57,7 +57,7 @@ for await (const event of proc.run({
   prompt: userMessage,
   skipPermissions: true,
   sessionId: session.cliSessionId,   // undefined on first turn — no session flag passed
-  isFirstMessage: session.isFirst,   // true → --session-id (Claude); false → --resume (Claude) / --conversation (Antigravity)
+  isFirstMessage: session.isFirst,   // true → --session-id (Claude); false → --resume (Claude) / --conversation (Gemini)
 })) {
   switch (event.type) {
     case 'ready':

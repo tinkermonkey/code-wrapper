@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCliLine, createCopilotAcpParser, createAntigravityStreamParser } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser, createGeminiStreamParser } from '../events/EventParser.js';
 import type {
   ReadyEvent,
   RetryEvent,
@@ -613,10 +613,10 @@ describe('createCopilotAcpParser', () => {
   });
 });
 
-describe('createAntigravityStreamParser', () => {
+describe('createGeminiStreamParser', () => {
   describe('init event', () => {
     it('init with full data → ReadyEvent with sessionId, model, tools', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'init',
         conversation_id: 'conv-123',
@@ -629,7 +629,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('init with minimal data → ReadyEvent with only sessionId', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'init',
         conversation_id: 'conv-456',
@@ -643,7 +643,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('init tools with empty names are filtered out', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'init',
         conversation_id: 'conv-789',
@@ -653,7 +653,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('conversationId persists for subsequent events', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       parse(line({
         event: 'init',
         conversation_id: 'persisted-conv',
@@ -670,7 +670,7 @@ describe('createAntigravityStreamParser', () => {
   describe('step_update event', () => {
     describe('agent_response', () => {
       it('agent_response with text_delta → TextEvent', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: { step_type: 'agent_response', text_delta: 'Hello world' },
@@ -679,7 +679,7 @@ describe('createAntigravityStreamParser', () => {
       });
 
       it('agent_response with empty text_delta → TextEvent with empty text', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: { step_type: 'agent_response', text_delta: '' },
@@ -688,14 +688,14 @@ describe('createAntigravityStreamParser', () => {
       });
 
       it('agent_response without text_delta → RawEvent (metadata-only)', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: { step_type: 'agent_response' },
         }), 0);
         expect(ev).toMatchObject({
           type: 'raw',
-          rawType: 'antigravity/step_update',
+          rawType: 'gemini/step_update',
           rawSubtype: 'agent_response',
         });
       });
@@ -703,7 +703,7 @@ describe('createAntigravityStreamParser', () => {
 
     describe('tool steps', () => {
       it('tool ACTIVE state → ToolUseEvent', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: {
@@ -718,7 +718,7 @@ describe('createAntigravityStreamParser', () => {
       });
 
       it('tool DONE state → ToolResultEvent', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: {
@@ -733,7 +733,7 @@ describe('createAntigravityStreamParser', () => {
       });
 
       it('tool DONE with error → ToolResultEvent with isError=true', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: {
@@ -747,7 +747,7 @@ describe('createAntigravityStreamParser', () => {
       });
 
       it('tool DONE with both output and error → error takes precedence', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: {
@@ -761,7 +761,7 @@ describe('createAntigravityStreamParser', () => {
       });
 
       it('tool without tool_use_id → RawEvent', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: {
@@ -771,11 +771,11 @@ describe('createAntigravityStreamParser', () => {
           },
         }), 0) as [RawEvent];
         expect(ev.type).toBe('raw');
-        expect(ev.rawType).toBe('antigravity/step_update');
+        expect(ev.rawType).toBe('gemini/step_update');
       });
 
       it('tool with unknown state → RawEvent', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: {
@@ -790,13 +790,13 @@ describe('createAntigravityStreamParser', () => {
 
     describe('other step_types', () => {
       it('unknown step_type → RawEvent', () => {
-        const parse = createAntigravityStreamParser();
+        const parse = createGeminiStreamParser();
         const [ev] = parse(line({
           event: 'step_update',
           step_update: { step_type: 'future_step' },
         }), 0) as [RawEvent];
         expect(ev.type).toBe('raw');
-        expect(ev.rawType).toBe('antigravity/step_update');
+        expect(ev.rawType).toBe('gemini/step_update');
         expect(ev.rawSubtype).toBe('future_step');
       });
     });
@@ -804,7 +804,7 @@ describe('createAntigravityStreamParser', () => {
 
   describe('result event', () => {
     it('result with full data → DoneEvent', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'result',
         result: {
@@ -826,7 +826,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('result with status=error → DoneEvent with isError=true', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'result',
         result: { conversation_id: 'conv-err', status: 'error' },
@@ -835,7 +835,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('result without conversation_id uses stored conversationId', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       parse(line({
         event: 'init',
         conversation_id: 'stored-conv',
@@ -849,7 +849,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('result with minimal data → DoneEvent with sessionId only', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'result',
         result: { conversation_id: 'minimal' },
@@ -865,7 +865,7 @@ describe('createAntigravityStreamParser', () => {
 
   describe('error event', () => {
     it('error with stale session message → ErrorEvent with code=stale_session', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'error',
         error: { message: 'conversation not found' },
@@ -876,7 +876,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('error with rate limit message → ErrorEvent with code=rate_limit', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'error',
         error: { message: 'rate limit exceeded' },
@@ -885,7 +885,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('error with quota exceeded message → ErrorEvent with code=rate_limit', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'error',
         error: { message: 'quota exceeded' },
@@ -894,7 +894,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('error with generic message → ErrorEvent with code=cli_error', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'error',
         error: { message: 'something went wrong' },
@@ -903,7 +903,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('error with empty message → ErrorEvent with code=cli_error', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'error',
         error: {},
@@ -913,7 +913,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('error regex is case-insensitive', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'error',
         error: { message: 'Conversation Not Found' },
@@ -922,7 +922,7 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('error regex handles rate-limit with dash', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'error',
         error: { message: 'rate-limit hit' },
@@ -932,14 +932,14 @@ describe('createAntigravityStreamParser', () => {
   });
 
   describe('unrecognized events', () => {
-    it('unknown event value → RawEvent with rawType=antigravity/<event>', () => {
-      const parse = createAntigravityStreamParser();
+    it('unknown event value → RawEvent with rawType=gemini/<event>', () => {
+      const parse = createGeminiStreamParser();
       const [ev] = parse(line({
         event: 'unknown_event',
         payload: { data: 42 },
       }), 0) as [RawEvent];
       expect(ev).toMatchObject({
-        type: 'raw', rawType: 'antigravity/unknown_event',
+        type: 'raw', rawType: 'gemini/unknown_event',
       });
       expect(ev.data).toEqual({ event: 'unknown_event', payload: { data: 42 } });
     });
@@ -947,7 +947,7 @@ describe('createAntigravityStreamParser', () => {
 
   describe('malformed JSON and plaintext', () => {
     it('malformed JSON line starting with { → ErrorEvent with code=parse_error', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse('{ invalid json', 0) as [ErrorEvent];
       expect(ev).toMatchObject({
         type: 'error', code: 'parse_error', detail: expect.stringContaining('Malformed JSON'),
@@ -955,19 +955,19 @@ describe('createAntigravityStreamParser', () => {
     });
 
     it('plaintext line (no leading {) → TextEvent', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const [ev] = parse('startup message', 0) as [TextEvent];
       expect(ev).toMatchObject({ type: 'text', text: 'startup message\n' });
     });
 
     it('empty line → no events', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const evs = parse('', 0);
       expect(evs).toHaveLength(0);
     });
 
     it('whitespace-only line → no events', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const evs = parse('   ', 0);
       expect(evs).toHaveLength(0);
     });
@@ -975,7 +975,7 @@ describe('createAntigravityStreamParser', () => {
 
   describe('seq numbering', () => {
     it('preserves and increments seq across multiple events', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const ev1s = parse(line({
         event: 'init', conversation_id: 'c1', init: {},
       }), 10);
@@ -989,7 +989,7 @@ describe('createAntigravityStreamParser', () => {
 
   describe('timestamp', () => {
     it('each event has a timestamp', () => {
-      const parse = createAntigravityStreamParser();
+      const parse = createGeminiStreamParser();
       const before = Date.now();
       const [ev] = parse(line({ event: 'init', conversation_id: 'c', init: {} }), 0);
       const after = Date.now();

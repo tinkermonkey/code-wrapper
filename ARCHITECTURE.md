@@ -1,6 +1,6 @@
 # code-wrapper — Architecture
 
-This document covers the module's internal design, the key TypeScript interfaces, and a detailed mapping of what the module covers (and does not cover) for its three supported backends (Claude Code, GitHub Copilot, and Antigravity) and its consumers: the **Documentation Robotics CLI** and the **Switchyard** orchestrator.
+This document covers the module's internal design, the key TypeScript interfaces, and a detailed mapping of what the module covers (and does not cover) for its three supported backends (Claude Code, GitHub Copilot, and Google Gemini) and its consumers: the **Documentation Robotics CLI** and the **Switchyard** orchestrator.
 
 ---
 
@@ -49,19 +49,19 @@ The calling application wires all three together. The module imposes no threadin
  │  spawn(backend binary)                                      │
  │  • claude --print --verbose --output-format stream-json     │
  │  • copilot --acp --stdio                                    │
- │  • agy -p <prompt> --output-format stream-json              │
+ │  • gemini -p <prompt> --output-format stream-json           │
  │      │                                                      │
  │      ├── stdin ◄── options.prompt (Claude/Copilot)          │
- │      │             (closed immediately for Antigravity)     │
+ │      │             (closed immediately for Google Gemini)   │
  │      │                                                      │
  │      ├── stdout ──▶ readline 'line' event                   │
  │      │                  │                                   │
  │      │                  ▼                                   │
  │      │           ┌─ select parser ─┐                        │
  │      │           │                  │                       │
- │      │    [Claude]  [Copilot]  [Antigravity]               │
+ │      │    [Claude]  [Copilot]  [Google Gemini]            │
  │      │       │         │             │                     │
- │      │   parseCliLine  createCopilot  createAntigravity    │
+ │      │   parseCliLine  createCopilot  createGemini         │
  │      │                 AcpParser()    StreamParser()       │
  │      │       │         │             │                     │
  │      │       └────┬────┴─────────────┘                     │
@@ -115,7 +115,7 @@ The `ClaudeEvent` union and all event types remain unchanged across the addition
 ### ProcessOptions
 
 ```typescript
-type CliBackend = 'claude' | 'copilot' | 'antigravity';
+type CliBackend = 'claude' | 'copilot' | 'gemini';
 
 interface ProcessOptions {
   cwd: string;               // working directory for the CLI
@@ -223,7 +223,7 @@ type ErrorCode =
 | `step_update` | other step_type or state | `RawEvent` (zero-loss fallback) |
 | `result` | (result metadata) | `DoneEvent` (sessionId, usage; no cache tokens, resultText, or cost) |
 | `error` | error message | `ErrorEvent { code: 'cli_error' \| 'stale_session' \| 'rate_limit' } (via regex heuristics on message text) |
-| any other event | — | `RawEvent` with rawType=`antigravity/<event>` |
+| any other event | — | `RawEvent` with rawType=`gemini/<event>` |
 
 **Shared across all backends:**
 
@@ -311,16 +311,15 @@ copilot --acp --stdio
 ```
 The prompt is NOT passed as a CLI flag. Instead, after the `initialize` and `session/new` handshake over stdin, a `session/prompt` NDJSON message is written with the prompt as a content block. Session IDs are UUIDs assigned by the ACP protocol.
 
-**Antigravity:**
+**Google Gemini:**
 ```
 [--agent <name>]               ← prepended first (unshift)
-agy
-  -p <prompt>                            # prompt passed as flag value, not stdin
+gemini
   --output-format stream-json
   [--dangerously-skip-permissions]       # if skipPermissions === true
   [--conversation <id>]                  # if sessionId present and isFirstMessage === false
 ```
-Stdin is closed immediately after spawn without writing (Antigravity does not accept stdin input). The prompt is passed via the `-p` flag. Note: `mcpConfigPath` is not passed to Antigravity—it uses its own built-in MCP discovery.
+The prompt is passed via stdin, like Claude. Stdin is closed immediately after writing the prompt. Note: `mcpConfigPath` is not passed to Gemini—it uses its own built-in MCP discovery.
 
 ### CLAUDECODE environment deletion
 

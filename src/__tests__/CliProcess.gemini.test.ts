@@ -8,15 +8,15 @@ import type { ClaudeEvent, ErrorEvent, TextEvent, ReadyEvent, DoneEvent } from '
 import type { ProcessOptions } from '../process/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FAKE_AGY_SRC = join(__dirname, 'fixtures', 'fake-agy.mjs');
+const FAKE_GEMINI_SRC = join(__dirname, 'fixtures', 'fake-gemini.mjs');
 
 let fakeBinDir: string;
 let savedPath: string | undefined;
 
 beforeAll(() => {
-  fakeBinDir = mkdtempSync(join(tmpdir(), 'fake-agy-'));
-  const fakeBin = join(fakeBinDir, 'agy');
-  writeFileSync(fakeBin, readFileSync(FAKE_AGY_SRC, 'utf-8'), 'utf-8');
+  fakeBinDir = mkdtempSync(join(tmpdir(), 'fake-gemini-'));
+  const fakeBin = join(fakeBinDir, 'gemini');
+  writeFileSync(fakeBin, readFileSync(FAKE_GEMINI_SRC, 'utf-8'), 'utf-8');
   chmodSync(fakeBin, 0o755);
   savedPath = process.env.PATH;
   process.env.PATH = `${fakeBinDir}:${savedPath ?? ''}`;
@@ -40,7 +40,7 @@ afterEach(() => {
 const BASE: ProcessOptions = { cwd: tmpdir(), prompt: 'test prompt' };
 
 async function collect(extra: Partial<ProcessOptions> = {}): Promise<ClaudeEvent[]> {
-  const proc = new CliProcess('antigravity');
+  const proc = new CliProcess('gemini');
   const events: ClaudeEvent[] = [];
   for await (const ev of proc.run({ ...BASE, ...extra })) {
     events.push(ev);
@@ -71,7 +71,7 @@ describe('golden path', () => {
     const events = await collect();
     expect(events.find(e => e.type === 'ready')).toMatchObject({
       type: 'ready',
-      sessionId: 'agy-sess-abc123',
+      sessionId: 'gemini-sess-abc123',
     });
   });
 
@@ -80,18 +80,18 @@ describe('golden path', () => {
     const events = await collect();
     expect(events.find(e => e.type === 'done')).toMatchObject({
       type: 'done',
-      sessionId: 'agy-sess-abc123',
+      sessionId: 'gemini-sess-abc123',
     });
   });
 
-  it('TextEvents carry the antigravity response content', async () => {
+  it('TextEvents carry the Google Gemini response content', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
     const events = await collect();
     const text = events
       .filter(e => e.type === 'text')
       .map(e => (e as TextEvent).text)
       .join('');
-    expect(text).toContain('Hello from Antigravity!');
+    expect(text).toContain('Hello from Google Gemini!');
   });
 
   it('seq values are strictly increasing', async () => {
@@ -104,19 +104,19 @@ describe('golden path', () => {
 });
 
 // ---------------------------------------------------------------- availability
-it('isAvailable returns true when fake agy binary is in PATH', async () => {
-  const proc = new CliProcess('antigravity');
+it('isAvailable returns true when fake gemini binary is in PATH', async () => {
+  const proc = new CliProcess('gemini');
   expect(await proc.isAvailable()).toBe(true);
 });
 
 // ---------------------------------------------------------------- binary name
-it('binaryName() resolves to agy for antigravity backend', async () => {
-  const proc = new CliProcess('antigravity');
+it('binaryName() resolves to gemini for gemini backend', async () => {
+  const proc = new CliProcess('gemini');
   expect(await proc.isAvailable()).toBe(true);
 });
 
 // ---------------------------------------------------------------- argument building
-describe('buildAntigravityArgs', () => {
+describe('buildGeminiArgs', () => {
   it('passes prompt via stdin', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
     // This is tested indirectly by running the process; the prompt must be passed via stdin
@@ -217,7 +217,7 @@ describe('timeouts', () => {
     expect(events.at(-1)).toMatchObject({ type: 'error', code: 'max_timeout' });
   });
 
-  it('SIGKILL escalation when agy ignores SIGTERM', async () => {
+  it('SIGKILL escalation when gemini ignores SIGTERM', async () => {
     process.env.FAKE_SCENARIO = 'ignore-sigterm';
     const events = await collect({
       idleTimeout: 1,
@@ -242,7 +242,7 @@ describe('AbortSignal', () => {
   it('mid-run abort → ErrorEvent { aborted } after some events', async () => {
     process.env.FAKE_SCENARIO = 'stall';
     const controller = new AbortController();
-    const proc = new CliProcess('antigravity');
+    const proc = new CliProcess('gemini');
     const events: ClaudeEvent[] = [];
     for await (const ev of proc.run({
       ...BASE,
@@ -265,7 +265,7 @@ describe('session resume', () => {
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
     const ready = events.find(e => e.type === 'ready') as ReadyEvent | undefined;
     expect(ready).toBeDefined();
-    expect(ready!.sessionId).toBe('agy-resumed-sess-xyz789');
+    expect(ready!.sessionId).toBe('gemini-resumed-sess-xyz789');
   });
 
   it('sessionId + isFirstMessage=true → no resume flag', async () => {
@@ -274,7 +274,7 @@ describe('session resume', () => {
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
     expect(events.find(e => e.type === 'ready')).toMatchObject({
       type: 'ready',
-      sessionId: 'agy-sess-abc123',
+      sessionId: 'gemini-sess-abc123',
     });
   });
 
@@ -283,6 +283,6 @@ describe('session resume', () => {
     const events = await collect({ sessionId: 'test-sess-uuid', isFirstMessage: false });
     const done = events.find(e => e.type === 'done') as DoneEvent | undefined;
     expect(done).toBeDefined();
-    expect(done!.sessionId).toBe('agy-resumed-sess-xyz789');
+    expect(done!.sessionId).toBe('gemini-resumed-sess-xyz789');
   });
 });

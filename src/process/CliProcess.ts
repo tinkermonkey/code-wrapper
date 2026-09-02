@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent, ReadyEvent } from '../events/types.js';
-import { parseCliLine, createCopilotAcpParser, createAntigravityStreamParser } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser, createGeminiStreamParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
@@ -10,7 +10,7 @@ const RATE_LIMIT_RE =
 const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
 
 /**
- * Spawns an AI coding agent CLI (Claude Code, GitHub Copilot, or Antigravity),
+ * Spawns an AI coding agent CLI (Claude Code, GitHub Copilot, or Google Gemini),
  * delivers a prompt, and yields a normalized stream of ClaudeEvents.
  *
  * Claude Code: prompt via stdin; stream-json output parsed into typed events.
@@ -22,8 +22,8 @@ const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
  *   persisted session is loaded by session/new, which hands back a NEW
  *   session UUID rather than reusing the old one.
  *
- * Antigravity: prompt via stdin; NDJSON stream-json output parsed
- *   into typed events by createAntigravityStreamParser(). Session resume via
+ * Google Gemini: prompt via stdin; NDJSON stream-json output parsed
+ *   into typed events by createGeminiStreamParser(). Session resume via
  *   `--conversation <id>` CLI flag.
  *
  * The caller is responsible for routing events — this class has no opinion
@@ -58,7 +58,7 @@ export class CliProcess {
     switch (this.backend) {
       case 'claude': return 'claude';
       case 'copilot': return 'copilot';
-      case 'antigravity': return 'agy';
+      case 'gemini': return 'gemini';
       default: { const _: never = this.backend; throw new Error(`Unknown backend: ${this.backend}`); }
     }
   }
@@ -169,8 +169,8 @@ export class CliProcess {
         // stdin stays open — session/prompt is sent from the consume loop below
         break;
       }
-      case 'antigravity': {
-        // Antigravity receives the prompt via stdin, like Claude.
+      case 'gemini': {
+        // Google Gemini receives the prompt via stdin, like Claude.
         // This keeps prompts with sensitive information (API keys, PII) out of the
         // process argument list (visible via ps/proc), mitigating exposure risks.
         proc.stdin!.write(prompt);
@@ -243,7 +243,7 @@ export class CliProcess {
     const parseLine = (() => {
       switch (this.backend) {
         case 'copilot': return createCopilotAcpParser();
-        case 'antigravity': return createAntigravityStreamParser();
+        case 'gemini': return createGeminiStreamParser();
         case 'claude': return parseCliLine;
         default: {
           const _: never = this.backend;
@@ -419,8 +419,8 @@ export class CliProcess {
       case 'copilot': {
         return this.buildCopilotArgs(options);
       }
-      case 'antigravity': {
-        return this.buildAntigravityArgs(options);
+      case 'gemini': {
+        return this.buildGeminiArgs(options);
       }
       case 'claude': {
         const {
@@ -473,18 +473,18 @@ export class CliProcess {
   }
 
   /**
-   * Build args for the Antigravity CLI (`agy`).
+   * Build args for the Google Gemini CLI (`gemini`).
    *
-   * Invocation: agy --output-format stream-json
+   * Invocation: gemini --output-format stream-json
    * The prompt is passed via stdin, not as a flag, to avoid exposure in process listings.
    * This keeps sensitive information (API keys, PII, credentials) out of ps/proc.
    *
    * Session resume: --conversation <id> (when isFirstMessage is false)
    * New session: no resume flag (when isFirstMessage is true or not provided)
    *
-   * Note: mcpConfigPath is not passed to Antigravity as it uses its own MCP discovery.
+   * Note: mcpConfigPath is not passed to Gemini as it uses its own MCP discovery.
    */
-  private buildAntigravityArgs(options: ProcessOptions): string[] {
+  private buildGeminiArgs(options: ProcessOptions): string[] {
     const {
       skipPermissions = false,
       sessionId,

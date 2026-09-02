@@ -220,13 +220,13 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
 }
 
 /**
- * Stateful parser factory for Antigravity's `--output-format stream-json` NDJSON stream.
+ * Stateful parser factory for Google Gemini's `--output-format stream-json` NDJSON stream.
  *
  * Returns a closure that parses NDJSON JSON lines with an `event` discriminator into
  * normalized ClaudeEvents. Call once per CliProcess.run() invocation so all lines
  * in a session share the same conversationId state.
  *
- * Antigravity event → ClaudeEvent mapping:
+ * Google Gemini event → ClaudeEvent mapping:
  *   init                                           → ReadyEvent with sessionId from conversation_id
  *   step_update (agent_response + text_delta)     → TextEvent
  *   step_update (agent_response, no text_delta)   → RawEvent (metadata-only)
@@ -235,11 +235,11 @@ export function parseCliLine(line: string, nextSeq: number): ClaudeEvent[] {
  *   step_update (other step_type)                 → RawEvent (zero-loss fallback)
  *   result                                        → DoneEvent
  *   error                                         → ErrorEvent with code from regex heuristics
- *   Any other event value                         → RawEvent with rawType: 'antigravity/<event>'
+ *   Any other event value                         → RawEvent with rawType: 'gemini/<event>'
  *   Malformed JSON (line starts with '{')         → ErrorEvent { code: 'parse_error' }
  *   Plaintext lines                               → TextEvent
  */
-export function createAntigravityStreamParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
+export function createGeminiStreamParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
   let conversationId = '';
 
   return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
@@ -290,7 +290,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
           // Metadata-only agent response (no text_delta, e.g. thinking, citations) — preserve as raw
           events.push({
             seq: seq++, timestamp, type: 'raw',
-            rawType: 'antigravity/step_update', rawSubtype: 'agent_response',
+            rawType: 'gemini/step_update', rawSubtype: 'agent_response',
             data: msg as unknown,
           } satisfies RawEvent);
         }
@@ -320,7 +320,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
           // Unrecognized tool state or missing toolUseId — preserve as raw
           events.push({
             seq: seq++, timestamp, type: 'raw',
-            rawType: 'antigravity/step_update', rawSubtype: `tool_${state}`,
+            rawType: 'gemini/step_update', rawSubtype: `tool_${state}`,
             data: msg as unknown,
           } satisfies RawEvent);
         }
@@ -329,7 +329,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
         // Unrecognized step_type — preserve as raw (zero-loss fallback)
         events.push({
           seq: seq++, timestamp, type: 'raw',
-          rawType: 'antigravity/step_update', rawSubtype: stepType,
+          rawType: 'gemini/step_update', rawSubtype: stepType,
           data: msg as unknown,
         } satisfies RawEvent);
       }
@@ -358,7 +358,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
     } else if (event === 'error') {
       const error = msg.error as Record<string, unknown> | undefined;
       const message = (error?.message as string) || '';
-      const code = classifyAntigravityError(message);
+      const code = classifyGeminiError(message);
 
       events.push({
         seq: seq++, timestamp, type: 'error',
@@ -369,7 +369,7 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
       // Unrecognized event value — preserve as raw so nothing is silently lost
       events.push({
         seq: seq++, timestamp, type: 'raw',
-        rawType: `antigravity/${event}`,
+        rawType: `gemini/${event}`,
         data: msg as unknown,
       } satisfies RawEvent);
     }
@@ -379,10 +379,10 @@ export function createAntigravityStreamParser(): (line: string, nextSeq: number)
 }
 
 /**
- * Classify an Antigravity error message via regex heuristics.
- * Antigravity provides no structured error code, so we match against message text.
+ * Classify a Google Gemini error message via regex heuristics.
+ * Google Gemini provides no structured error code, so we match against message text.
  */
-function classifyAntigravityError(message: string): ErrorCode {
+function classifyGeminiError(message: string): ErrorCode {
   const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
   const RATE_LIMIT_RE = /rate.?limit|quota.*exceeded/i;
 

@@ -180,7 +180,7 @@ options = ClientOptions(
     skip_permissions=False,                # bypass permission checks
     agent="my-agent",                      # use a specific agent
     mcp_config_path="/path/to/config.json",  # MCP configuration (Claude only)
-    backend="claude",                      # "claude", "copilot", or "antigravity"
+    backend="claude",                      # "claude", "copilot", or "gemini"
 )
 ```
 
