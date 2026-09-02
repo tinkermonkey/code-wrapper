@@ -48,6 +48,23 @@ if (scenario === 'resume' && !args.conversation) {
   process.exit(1);
 }
 
+// Validate flag expectations for test scenarios
+const expectedSkipPermissions = process.env.FAKE_EXPECT_SKIP_PERMISSIONS;
+if (expectedSkipPermissions === 'true' && !args['dangerously-skip-permissions']) {
+  process.stderr.write('Error: expected --dangerously-skip-permissions flag but it was not provided\n');
+  process.exit(1);
+}
+if (expectedSkipPermissions === 'false' && args['dangerously-skip-permissions']) {
+  process.stderr.write('Error: expected NO --dangerously-skip-permissions flag but it was provided\n');
+  process.exit(1);
+}
+
+const expectedAgent = process.env.FAKE_EXPECT_AGENT;
+if (expectedAgent && args.agent !== expectedAgent) {
+  process.stderr.write(`Error: expected --agent ${expectedAgent} but got ${args.agent ?? 'nothing'}\n`);
+  process.exit(1);
+}
+
 // Emit the basic event stream
 const sessionId = scenario === 'resume' ? 'agy-resumed-sess-xyz789' : 'agy-sess-abc123';
 

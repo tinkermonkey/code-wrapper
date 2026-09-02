@@ -33,6 +33,8 @@ afterAll(() => {
 
 afterEach(() => {
   delete process.env.FAKE_SCENARIO;
+  delete process.env.FAKE_EXPECT_SKIP_PERMISSIONS;
+  delete process.env.FAKE_EXPECT_AGENT;
 });
 
 const BASE: ProcessOptions = { cwd: tmpdir(), prompt: 'test prompt' };
@@ -124,18 +126,21 @@ describe('buildAntigravityArgs', () => {
 
   it('skipPermissions=true includes --dangerously-skip-permissions', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
+    process.env.FAKE_EXPECT_SKIP_PERMISSIONS = 'true';
     const events = await collect({ skipPermissions: true });
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
 
   it('skipPermissions=false omits --dangerously-skip-permissions', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
+    process.env.FAKE_EXPECT_SKIP_PERMISSIONS = 'false';
     const events = await collect({ skipPermissions: false });
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
 
   it('agent flag is passed through', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
+    process.env.FAKE_EXPECT_AGENT = 'test-agent';
     const events = await collect({ agent: 'test-agent' });
     expect(events.filter(e => e.type === 'error')).toHaveLength(0);
   });
