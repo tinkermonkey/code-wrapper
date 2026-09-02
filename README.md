@@ -2,17 +2,22 @@
 
 Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the three universal concerns:
 
-1. **Process launch** — spawn `claude`, `copilot`, or `gemini` (Google Gemini), deliver prompt, enforce idle and max timeouts, tear down cleanly
+1. **Process launch** — spawn `claude`, `copilot`, `gemini` (Google Gemini), or `agent` (Cursor CLI), deliver prompt, enforce idle and max timeouts, tear down cleanly
 2. **Event normalization** — parse `--output-format stream-json` output into a typed `ClaudeEvent` stream with a monotonic `seq` on every event
 3. **Session management** — track CLI session IDs across turns, persist them to disk, detect and recover from stale sessions
 
 ## Supported Backends
 
-| Backend | Binary | Status |
-|---|---|---|
-| **Claude Code** | `claude` | ✓ Fully supported |
-| **GitHub Copilot** | `copilot` (via `gh extension`) | ✓ Fully supported |
-| **Google Gemini** | `gemini` | ✓ Fully supported |
+| Backend | Binary | Auth | Status |
+|---|---|---|---|
+| **Claude Code** | `claude` | `ANTHROPIC_API_KEY` or OAuth | ✓ Fully supported |
+| **GitHub Copilot** | `copilot` (via `gh extension`) | GitHub session | ✓ Fully supported |
+| **Google Gemini** | `gemini` | `GOOGLE_GENERATIVE_AI_API_KEY` | ✓ Fully supported |
+| **Cursor CLI** | `agent` | `CURSOR_API_KEY` or `agent login` | ✓ Fully supported |
+
+### Backend Notes
+
+- **Cursor CLI** runs in headless print mode (not ACP). Extended thinking (`ThinkingEvent`) is not produced for this backend — text output represents the final response without intermediate reasoning content.
 
 ## Requirements
 
@@ -21,6 +26,7 @@ Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the t
   - `claude` (Claude Code)
   - `copilot` (GitHub Copilot: `gh extension install github/gh-copilot`)
   - `gemini` (Google Gemini)
+  - `agent` (Cursor CLI)
 
 ## Install
 
@@ -46,7 +52,7 @@ The `prepare` script runs `build` automatically on `npm install` from a git URL.
 ```typescript
 import { CliProcess, SessionManager } from '@tinkermonkey/code-wrapper';
 
-// Use 'claude', 'copilot', or 'gemini'
+// Use 'claude', 'copilot', 'gemini', or 'cursor'
 const proc = new CliProcess('claude');
 const sessions = new SessionManager({ persistPath: './sessions.json' });
 
