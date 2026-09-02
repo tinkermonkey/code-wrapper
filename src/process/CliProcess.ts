@@ -2,24 +2,29 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { ClaudeEvent, DistributiveOmit, ErrorEvent, ProgressEvent, ReadyEvent } from '../events/types.js';
-import { parseCliLine, createCopilotAcpParser } from '../events/EventParser.js';
+import { parseCliLine, createCopilotAcpParser, createGeminiStreamParser } from '../events/EventParser.js';
 import type { CliBackend, ProcessOptions } from './types.js';
 
 const RATE_LIMIT_RE =
   /hit\s+(?:your\s+)?limit.*?resets?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
-const STALE_SESSION_RE = /no conversation found with session id/i;
+const STALE_SESSION_RE = /conversation\s+not\s+found|no\s+conversation/i;
 
 /**
- * Spawns an AI coding agent CLI (Claude Code or GitHub Copilot), delivers a
- * prompt, and yields a normalized stream of ClaudeEvents.
+ * Spawns an AI coding agent CLI (Claude Code, GitHub Copilot, or Google Gemini),
+ * delivers a prompt, and yields a normalized stream of ClaudeEvents.
  *
  * Claude Code: prompt via stdin; stream-json output parsed into typed events.
+ *
  * Copilot: ACP protocol (copilot --acp --stdio); NDJSON JSON-RPC over
  *   stdin/stdout; initialize → session/new → session/prompt handshake;
  *   stateful parser produced by createCopilotAcpParser() tracks sessionUuid.
  *   Resume uses the same handshake (plus a --resume=<uuid> CLI flag) — the
  *   persisted session is loaded by session/new, which hands back a NEW
  *   session UUID rather than reusing the old one.
+ *
+ * Google Gemini: prompt via stdin; NDJSON stream-json output parsed
+ *   into typed events by createGeminiStreamParser(). Session resume via
+ *   `--conversation <id>` CLI flag.
  *
  * The caller is responsible for routing events — this class has no opinion
  * on whether they go to a WebSocket, Redis, SSE response, or an in-process
@@ -49,9 +54,18 @@ export class CliProcess {
     }
   }
 
+  private binaryName(): string {
+    switch (this.backend) {
+      case 'claude': return 'claude';
+      case 'copilot': return 'copilot';
+      case 'gemini': return 'gemini';
+      default: { const _: never = this.backend; throw new Error(`Unknown backend: ${this.backend}`); }
+    }
+  }
+
   /** Returns true if the backend binary is found in PATH */
   async isAvailable(): Promise<boolean> {
-    const bin = this.backend === 'claude' ? 'claude' : 'copilot';
+    const bin = this.binaryName();
     const r = spawnSync('which', [bin], { stdio: 'pipe' });
     return r.status === 0;
   }
@@ -115,7 +129,7 @@ export class CliProcess {
     };
 
     const proc = spawn(
-      this.backend === 'claude' ? 'claude' : 'copilot',
+      this.binaryName(),
       args,
       spawnOpts,
     );
@@ -136,25 +150,43 @@ export class CliProcess {
       proc.stdin!.write(JSON.stringify(msg) + '\n');
     };
 
-    if (this.backend === 'copilot') {
-      // ACP handshake over stdin/stdout. Copilot v1.0.68+ requires:
-      //   - protocolVersion as integer (not string)
-      //   - session/prompt.sessionId from the session/new ack
-      //   - session/prompt.prompt as [{type:'text',text:...}] array
-      // Real Copilot persists ACP sessions to disk under a UUID. Resuming does
-      // NOT mean reusing that UUID directly in session/prompt — the CLI is
-      // launched with --resume=<uuid> (see buildCopilotArgs), and a fresh
-      // session/new call loads the persisted context and hands back a NEW
-      // session UUID. So new and resumed sessions send the identical
-      // initialize + session/new sequence here; session/prompt is sent
-      // reactively from the consume loop below once the ReadyEvent (sessionId
-      // from the session/new ack) is parsed from stdout.
-      acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, capabilities: {} } });
-      acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
-      // stdin stays open — session/prompt is sent from the consume loop below
-    } else {
-      proc.stdin!.write(prompt);
-      closeStdin();
+    switch (this.backend) {
+      case 'copilot': {
+        // ACP handshake over stdin/stdout. Copilot v1.0.68+ requires:
+        //   - protocolVersion as integer (not string)
+        //   - session/prompt.sessionId from the session/new ack
+        //   - session/prompt.prompt as [{type:'text',text:...}] array
+        // Real Copilot persists ACP sessions to disk under a UUID. Resuming does
+        // NOT mean reusing that UUID directly in session/prompt — the CLI is
+        // launched with --resume=<uuid> (see buildCopilotArgs), and a fresh
+        // session/new call loads the persisted context and hands back a NEW
+        // session UUID. So new and resumed sessions send the identical
+        // initialize + session/new sequence here; session/prompt is sent
+        // reactively from the consume loop below once the ReadyEvent (sessionId
+        // from the session/new ack) is parsed from stdout.
+        acpWrite({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, capabilities: {} } });
+        acpWrite({ jsonrpc: '2.0', id: 2, method: 'session/new', params: { cwd, mcpServers: [] } });
+        // stdin stays open — session/prompt is sent from the consume loop below
+        break;
+      }
+      case 'gemini': {
+        // Google Gemini receives the prompt via stdin, like Claude.
+        // This keeps prompts with sensitive information (API keys, PII) out of the
+        // process argument list (visible via ps/proc), mitigating exposure risks.
+        proc.stdin!.write(prompt);
+        closeStdin();
+        break;
+      }
+      case 'claude': {
+        // Claude receives the prompt via stdin.
+        proc.stdin!.write(prompt);
+        closeStdin();
+        break;
+      }
+      default: {
+        const _: never = this.backend;
+        throw new Error(`Unknown backend: ${_}`);
+      }
     }
 
     let seq = 0;
@@ -208,7 +240,17 @@ export class CliProcess {
       pushEvent(null);
     });
 
-    const parseLine = this.backend === 'copilot' ? createCopilotAcpParser() : parseCliLine;
+    const parseLine = (() => {
+      switch (this.backend) {
+        case 'copilot': return createCopilotAcpParser();
+        case 'gemini': return createGeminiStreamParser();
+        case 'claude': return parseCliLine;
+        default: {
+          const _: never = this.backend;
+          throw new Error(`Unknown backend: ${_}`);
+        }
+      }
+    })();
 
     const rl = createInterface({ input: proc.stdout!, terminal: false, crlfDelay: Infinity });
     rl.on('line', (line: string) => {
@@ -373,30 +415,40 @@ export class CliProcess {
   }
 
   private buildArgs(options: ProcessOptions): string[] {
-    if (this.backend === 'copilot') {
-      return this.buildCopilotArgs(options);
+    switch (this.backend) {
+      case 'copilot': {
+        return this.buildCopilotArgs(options);
+      }
+      case 'gemini': {
+        return this.buildGeminiArgs(options);
+      }
+      case 'claude': {
+        const {
+          skipPermissions = false,
+          mcpConfigPath,
+          sessionId,
+          isFirstMessage = true,
+          agent,
+        } = options;
+
+        const args = ['--print', '--verbose', '--output-format', 'stream-json'];
+
+        if (skipPermissions) args.push('--permission-mode', 'bypassPermissions');
+        if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+
+        if (sessionId) {
+          args.push(isFirstMessage ? '--session-id' : '--resume', sessionId);
+        }
+
+        if (agent) args.unshift('--agent', agent);
+
+        return args;
+      }
+      default: {
+        const _: never = this.backend;
+        throw new Error(`Unknown backend: ${_}`);
+      }
     }
-
-    const {
-      skipPermissions = false,
-      mcpConfigPath,
-      sessionId,
-      isFirstMessage = true,
-      agent,
-    } = options;
-
-    const args = ['--print', '--verbose', '--output-format', 'stream-json'];
-
-    if (skipPermissions) args.push('--permission-mode', 'bypassPermissions');
-    if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
-
-    if (sessionId) {
-      args.push(isFirstMessage ? '--session-id' : '--resume', sessionId);
-    }
-
-    if (agent) args.unshift('--agent', agent);
-
-    return args;
   }
 
   /**
@@ -417,6 +469,39 @@ export class CliProcess {
     if (skipPermissions) args.push('--allow-all-tools');
     if (agent) args.push('--agent', agent);
     if (sessionId && !isFirstMessage) args.push(`--resume=${sessionId}`);
+    return args;
+  }
+
+  /**
+   * Build args for the Google Gemini CLI (`gemini`).
+   *
+   * Invocation: gemini --output-format stream-json
+   * The prompt is passed via stdin, not as a flag, to avoid exposure in process listings.
+   * This keeps sensitive information (API keys, PII, credentials) out of ps/proc.
+   *
+   * Session resume: --conversation <id> (when isFirstMessage is false)
+   * New session: no resume flag (when isFirstMessage is true or not provided)
+   *
+   * Note: mcpConfigPath is not passed to Gemini as it uses its own MCP discovery.
+   */
+  private buildGeminiArgs(options: ProcessOptions): string[] {
+    const {
+      skipPermissions = false,
+      sessionId,
+      isFirstMessage = true,
+      agent,
+    } = options;
+
+    const args = ['--output-format', 'stream-json'];
+
+    if (skipPermissions) args.push('--dangerously-skip-permissions');
+
+    if (sessionId && !isFirstMessage) {
+      args.push('--conversation', sessionId);
+    }
+
+    if (agent) args.unshift('--agent', agent);
+
     return args;
   }
 }

@@ -2,14 +2,25 @@
 
 Reusable Node.js module for apps that wrap an AI coding agent CLI. Handles the three universal concerns:
 
-1. **Process launch** — spawn `claude` or `copilot`, deliver prompt via stdin, enforce idle and max timeouts, tear down cleanly
+1. **Process launch** — spawn `claude`, `copilot`, or `gemini` (Google Gemini), deliver prompt, enforce idle and max timeouts, tear down cleanly
 2. **Event normalization** — parse `--output-format stream-json` output into a typed `ClaudeEvent` stream with a monotonic `seq` on every event
 3. **Session management** — track CLI session IDs across turns, persist them to disk, detect and recover from stale sessions
+
+## Supported Backends
+
+| Backend | Binary | Status |
+|---|---|---|
+| **Claude Code** | `claude` | ✓ Fully supported |
+| **GitHub Copilot** | `copilot` (via `gh extension`) | ✓ Fully supported |
+| **Google Gemini** | `gemini` | ✓ Fully supported |
 
 ## Requirements
 
 - Node.js ≥ 20
-- `claude` CLI in PATH, or `copilot` for GitHub Copilot (`gh extension install github/gh-copilot`)
+- At least one CLI in PATH:
+  - `claude` (Claude Code)
+  - `copilot` (GitHub Copilot: `gh extension install github/gh-copilot`)
+  - `gemini` (Google Gemini)
 
 ## Install
 
@@ -35,6 +46,7 @@ The `prepare` script runs `build` automatically on `npm install` from a git URL.
 ```typescript
 import { CliProcess, SessionManager } from '@tinkermonkey/code-wrapper';
 
+// Use 'claude', 'copilot', or 'gemini'
 const proc = new CliProcess('claude');
 const sessions = new SessionManager({ persistPath: './sessions.json' });
 
@@ -45,7 +57,7 @@ for await (const event of proc.run({
   prompt: userMessage,
   skipPermissions: true,
   sessionId: session.cliSessionId,   // undefined on first turn — no session flag passed
-  isFirstMessage: session.isFirst,   // true → --session-id; false → --resume
+  isFirstMessage: session.isFirst,   // true → --session-id (Claude); false → --resume (Claude) / --conversation (Gemini)
 })) {
   switch (event.type) {
     case 'ready':
@@ -127,12 +139,12 @@ All events carry `seq: number` (monotonic within a run) and `timestamp: number`.
 | Field | Default | Description |
 |---|---|---|
 | `cwd` | required | Working directory for the CLI |
-| `prompt` | required | Delivered via stdin |
-| `skipPermissions` | `false` | Pass `--permission-mode bypassPermissions` |
+| `prompt` | required | Delivered via stdin (Claude, Copilot) or `-p` flag (Antigravity) |
+| `skipPermissions` | `false` | Pass `--permission-mode bypassPermissions` (Claude) or `--dangerously-skip-permissions` (Antigravity) |
 | `agent` | — | `--agent <name>` (prepended first) |
-| `mcpConfigPath` | — | `--mcp-config <path>` |
-| `sessionId` | — | CLI session ID for continuity |
-| `isFirstMessage` | `true` | `true` → `--session-id`; `false` → `--resume` |
+| `mcpConfigPath` | — | `--mcp-config <path>` (Claude only; Antigravity uses its own MCP discovery) |
+| `sessionId` | — | CLI session ID for continuity (session-id → resume for Claude; conversation for Antigravity) |
+| `isFirstMessage` | `true` | `true` → `--session-id` (Claude) or omit flag (Antigravity); `false` → `--resume` (Claude) or `--conversation` (Antigravity) |
 | `idleTimeout` | `300` | Seconds of stdout silence before kill |
 | `maxTimeout` | `3600` | Hard ceiling in seconds |
 | `signal` | — | `AbortSignal` to cancel the in-flight process; yields `error { code: 'aborted' }` |

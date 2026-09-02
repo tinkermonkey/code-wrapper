@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 const schemaPath = resolve(__dirname, '../../schemas/claude-event.v1.schema.json');
 const fakeClaudePath = resolve(__dirname, 'fixtures/fake-claude.mjs');
 const fakeCopilotPath = resolve(__dirname, 'fixtures/fake-copilot.mjs');
+const fakeGeminiPath = resolve(__dirname, 'fixtures/fake-gemini.mjs');
 const execPath = resolve(__dirname, '../../dist/cli/exec.js');
 
 let schema: any;
@@ -29,7 +30,7 @@ function validateEventAgainstSchema(event: any): boolean {
 
 async function spawnBinaryWithFixture(
   fixture: string,
-  backend: 'claude' | 'copilot',
+  backend: 'claude' | 'copilot' | 'gemini',
   scenario: string,
   extraArgs?: string[],
 ): Promise<{ lines: string[], exitCode: number | null }> {
@@ -38,10 +39,11 @@ async function spawnBinaryWithFixture(
   const fixtureDir = tmpdir() + '/cw-test-' + Math.random().toString(36).slice(2);
   mkdirSync(fixtureDir, { recursive: true });
 
-  // Create symlinks for both fake CLIs
+  // Create symlinks for all fake CLIs
   try {
     const claudeLink = resolve(fixtureDir, 'claude');
     const copilotLink = resolve(fixtureDir, 'copilot');
+    const geminiLink = resolve(fixtureDir, 'gemini');
 
     // Only create if not already existing (avoid EEXIST)
     if (!existsSync(claudeLink)) {
@@ -51,6 +53,10 @@ async function spawnBinaryWithFixture(
     if (!existsSync(copilotLink)) {
       symlinkSync(fakeCopilotPath, copilotLink);
       chmodSync(copilotLink, 0o755);
+    }
+    if (!existsSync(geminiLink)) {
+      symlinkSync(fakeGeminiPath, geminiLink);
+      chmodSync(geminiLink, 0o755);
     }
   } catch (err) {
     throw new Error(`Failed to set up fixture directory: ${err instanceof Error ? err.message : String(err)}`);
@@ -161,6 +167,20 @@ describe('code-wrapper exec binary', () => {
 
     it('works with copilot backend', async () => {
       const result = await spawnBinaryWithFixture(fakeCopilotPath, 'copilot', 'golden-path');
+      const lines = result.lines;
+      expect(Array.isArray(lines)).toBe(true);
+
+      expect(lines.length).toBeGreaterThan(0);
+
+      for (const line of lines) {
+        const event = JSON.parse(line);
+        expect(event.v).toBe(1);
+        expect(validateEventAgainstSchema(event)).toBe(true);
+      }
+    });
+
+    it('works with gemini backend', async () => {
+      const result = await spawnBinaryWithFixture(fakeGeminiPath, 'gemini', 'golden-path');
       const lines = result.lines;
       expect(Array.isArray(lines)).toBe(true);
 

@@ -1,6 +1,6 @@
 # code-wrapper — Architecture
 
-This document covers the module's internal design, the key TypeScript interfaces, and a detailed mapping of what the module covers (and does not cover) for its two MVP consumers: the **Documentation Robotics CLI** and the **Switchyard** orchestrator.
+This document covers the module's internal design, the key TypeScript interfaces, and a detailed mapping of what the module covers (and does not cover) for its three supported backends (Claude Code, GitHub Copilot, and Google Gemini) and its consumers: the **Documentation Robotics CLI** and the **Switchyard** orchestrator.
 
 ---
 
@@ -46,15 +46,28 @@ The calling application wires all three together. The module imposes no threadin
  ┌─────────────────────────────────────────────────────────────┐
  │  CliProcess.run(options)                                    │
  │                                                             │
- │  spawn(claude --print --verbose --output-format stream-json)│
+ │  spawn(backend binary)                                      │
+ │  • claude --print --verbose --output-format stream-json     │
+ │  • copilot --acp --stdio                                    │
+ │  • gemini -p <prompt> --output-format stream-json           │
  │      │                                                      │
- │      ├── stdin ◄── options.prompt (write + end)            │
+ │      ├── stdin ◄── options.prompt (Claude/Copilot)          │
+ │      │             (closed immediately for Google Gemini)   │
  │      │                                                      │
  │      ├── stdout ──▶ readline 'line' event                   │
  │      │                  │                                   │
  │      │                  ▼                                   │
- │      │           EventParser.parseCliLine(line, seq)        │
- │      │                  │                                   │
+ │      │           ┌─ select parser ─┐                        │
+ │      │           │                  │                       │
+ │      │    [Claude]  [Copilot]  [Google Gemini]            │
+ │      │       │         │             │                     │
+ │      │   parseCliLine  createCopilot  createGemini         │
+ │      │                 AcpParser()    StreamParser()       │
+ │      │       │         │             │                     │
+ │      │       └────┬────┴─────────────┘                     │
+ │      │            ▼                                         │
+ │      │    normalized ClaudeEvent                            │
+ │      │                  │                   │               │
  │      │                  ▼                                   │
  │      │           push ──▶ shared async queue                │
  │      │                                                      │
@@ -89,19 +102,29 @@ The shared async queue is the key architectural detail. Both readline (stdout li
 
 ---
 
+## Schema stability
+
+The `ClaudeEvent` union and all event types remain unchanged across the addition of the Antigravity backend. Event type definitions already include optional fields (`resultText`, `isError`, `durationMs`, `totalCostUsd`, `numTurns`, `stopReason`) for backend-specific metadata that may or may not be populated depending on which backend is active.
+
+**No JSON schema changes were introduced by Antigravity support.** The `schemas/claude-event.v1.schema.json` (source for Python model generation via `py-code-wrapper/scripts/generate_models.py`) remains unchanged. Python models do not need to be regenerated.
+
+---
+
 ## Key interfaces
 
 ### ProcessOptions
 
 ```typescript
-type CliBackend = 'claude' | 'copilot';
+type CliBackend = 'claude' | 'copilot' | 'gemini';
 
 interface ProcessOptions {
   cwd: string;               // working directory for the CLI
-  prompt: string;            // delivered via proc.stdin.write() + .end()
+  prompt: string;            // delivered via proc.stdin.write() + .end() for Claude/Copilot;
+                             // via -p flag for Antigravity
   agent?: string;            // --agent <name>  (prepended before all other flags)
-  skipPermissions?: boolean; // --permission-mode bypassPermissions (default false)
-  mcpConfigPath?: string;    // --mcp-config <path>
+  skipPermissions?: boolean; // --permission-mode bypassPermissions (Claude) or
+                             // --dangerously-skip-permissions (Antigravity) (default false)
+  mcpConfigPath?: string;    // --mcp-config <path> (Claude only; Antigravity uses its own MCP discovery)
 
   // Session continuity
   sessionId?: string;        // present when resuming; omit for a brand-new session
@@ -171,6 +194,8 @@ type ErrorCode =
 
 ### Raw stream-json → ClaudeEvent mapping
 
+**Claude Code stream-json format:**
+
 | Raw type | Raw subtype / block type | Yields |
 |---|---|---|
 | `system` | `init` | `ReadyEvent` (sessionId, model, tool names) |
@@ -183,17 +208,34 @@ type ErrorCode =
 | `assistant` | empty content array | `RawEvent` |
 | `tool_result` | — | `ToolResultEvent` (direct, from `--verbose`) |
 | `user` | — | `RawEvent` (full user turn preserved) |
-| `result` | — | `DoneEvent` (sessionId + all usage fields incl. cache) |
+| `result` | — | `DoneEvent` (sessionId, usage incl. cache, resultText, cost) |
 | `rate_limit_event` | — | `ErrorEvent { code: 'rate_limit' }` |
 | `error` / `error_detail` / `error_event` | — | `ErrorEvent { code: 'cli_error' }` |
-| JSON line starting `{` that fails parse | — | `ErrorEvent { code: 'parse_error' }` |
-| Non-JSON plaintext line | — | `TextEvent` |
-| Any other type | — | `RawEvent` (generic fallback) |
-| Watchdog tick (every 5s) | — | `ProgressEvent { elapsed }` |
-| proc 'error' event (spawn failure) | — | `ErrorEvent { code: 'spawn_error' }` |
-| stderr at exit: stale session keyword | — | `ErrorEvent { code: 'stale_session' }` |
-| stderr at exit: rate limit keyword | — | `ErrorEvent { code: 'rate_limit' }` |
-| Non-zero exit code, no stderr match | — | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
+
+**Antigravity stream-json format (distinct event structure):**
+
+| Event discriminator | Event substructure | Yields |
+|---|---|---|
+| `init` | (init metadata in root) | `ReadyEvent` (sessionId from conversation_id, model, tool names) |
+| `step_update` | step_type=`agent_response` | `TextEvent` (from text_delta) |
+| `step_update` | step_type=`tool`, state=`ACTIVE` | `ToolUseEvent` (from tool_info) |
+| `step_update` | step_type=`tool`, state=`DONE` | `ToolResultEvent` (from tool_info) |
+| `step_update` | other step_type or state | `RawEvent` (zero-loss fallback) |
+| `result` | (result metadata) | `DoneEvent` (sessionId, usage; no cache tokens, resultText, or cost) |
+| `error` | error message | `ErrorEvent { code: 'cli_error' \| 'stale_session' \| 'rate_limit' } (via regex heuristics on message text) |
+| any other event | — | `RawEvent` with rawType=`gemini/<event>` |
+
+**Shared across all backends:**
+
+| Condition | Yields |
+|---|---|
+| JSON line starting `{` that fails parse | `ErrorEvent { code: 'parse_error' }` |
+| Non-JSON plaintext line | `TextEvent` |
+| Watchdog tick (every 5s) | `ProgressEvent { elapsed }` |
+| proc 'error' event (spawn failure) | `ErrorEvent { code: 'spawn_error' }` |
+| stderr at exit: stale session keyword | `ErrorEvent { code: 'stale_session' }` |
+| stderr at exit: rate limit keyword | `ErrorEvent { code: 'rate_limit' }` |
+| Non-zero exit code, no stderr match | `ErrorEvent { code: 'nonzero_exit', exitCode }` |
 
 ### Session
 
@@ -246,6 +288,7 @@ Two implementations ship: `MemoryStore` (Map-backed) and `FileStore` (atomic JSO
 
 ### CLI flag construction
 
+**Claude Code:**
 ```
 [--agent <name>]               ← prepended first (unshift)
 claude
@@ -255,10 +298,28 @@ claude
   [--permission-mode bypassPermissions]  # if skipPermissions === true
   [--mcp-config <path>]                  # if options.mcpConfigPath is set
   [--session-id <id>]                    # first message with a non-undefined sessionId
-  [--resume <id>]                        # subsequent messages
+  [--resume <id>]                        # subsequent messages (isFirstMessage === false)
 ```
-
 The prompt is written to `proc.stdin` directly (`write` + `end`). No positional stdin argument is passed to the CLI.
+
+**GitHub Copilot (ACP protocol):**
+```
+copilot --acp --stdio
+[--allow-all-tools]                      # if skipPermissions === true
+[--agent <name>]
+[--resume=<uuid>]                        # if sessionId present and isFirstMessage === false
+```
+The prompt is NOT passed as a CLI flag. Instead, after the `initialize` and `session/new` handshake over stdin, a `session/prompt` NDJSON message is written with the prompt as a content block. Session IDs are UUIDs assigned by the ACP protocol.
+
+**Google Gemini:**
+```
+[--agent <name>]               ← prepended first (unshift)
+gemini
+  --output-format stream-json
+  [--dangerously-skip-permissions]       # if skipPermissions === true
+  [--conversation <id>]                  # if sessionId present and isFirstMessage === false
+```
+The prompt is passed via stdin, like Claude. Stdin is closed immediately after writing the prompt. Note: `mcpConfigPath` is not passed to Gemini—it uses its own built-in MCP discovery.
 
 ### CLAUDECODE environment deletion
 
@@ -319,7 +380,7 @@ async function* runWithRecovery(
 
 ## Use case: Documentation Robotics CLI
 
-DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel instrumentation, and a `BaseChatClient` abstraction that wraps both Claude Code and GitHub Copilot.
+DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel instrumentation, and a `BaseChatClient` abstraction that wraps Claude Code, GitHub Copilot, and Antigravity.
 
 ### What code-wrapper covers
 
@@ -353,8 +414,7 @@ DR CLI is a TypeScript / Node.js project with a Hono + OpenAPI HTTP server, OTel
 
 | DR CLI concern | Why it stays in DR CLI |
 |---|---|
-| `BaseChatClient` polymorphism | `CliProcess` handles one backend per instance; DR wraps it in a common interface |
-| Copilot backend | Reserved for v2; throws on invocation |
+| `BaseChatClient` polymorphism (routing by backend) | `CliProcess` handles one backend per instance; DR wraps it in a common interface |
 | Hono + OpenAPI HTTP server | Application concern |
 | OpenTelemetry tracing and metrics | Application concern; code-wrapper emits no spans |
 | `ChatLogger` (durable local log file) | Destination-agnostic by design |
@@ -474,9 +534,26 @@ Switchyard (Python)
 
 ---
 
+## Backend feature gaps
+
+### Antigravity feature gaps (intentional, not architectural gaps)
+
+Antigravity's event protocol intentionally omits the following features present in Claude Code. These are **not** architectural gaps — they reflect Antigravity's design choices:
+
+| Feature | Claude | Copilot | Antigravity | Notes |
+|---|---|---|---|---|
+| **ThinkingEvent** | ✓ | ✗ | ✗ | Antigravity does not emit extended thinking; agent reasoning is opaque. |
+| **RetryEvent** | ✓ | ✗ | ✗ | Antigravity does not expose API retry attempts to the caller. Retries happen internally without signaling. |
+| **Cache token fields** | ✓ (cacheReadInputTokens, cacheCreationInputTokens) | ✗ | ✗ | Antigravity does not expose cache token accounting in its usage metrics. |
+| **DoneEvent.resultText** | ✓ | ✗ | ✗ | Antigravity provides no final summary/answer distinct from the streamed text events. |
+| **DoneEvent.totalCostUsd** | ✓ | ✗ | ✗ | Antigravity does not expose cost metrics to the caller. |
+| **DoneEvent.isError** | ✓ | ✗ | ✓ (conditional) | Antigravity sets isError only when result.status ≠ 'success'. |
+| **DoneEvent.durationMs** | ✓ | ✗ | ✓ | Antigravity provides duration via result.duration_seconds (converted to ms). |
+
+Callers should not rely on ThinkingEvent or RetryEvent when using the Antigravity backend, and should handle `usage` fields being partial (inputTokens + outputTokens only) when DoneEvent arrives.
+
 ## Known implementation gaps
 
 | Gap | Description | Priority |
 |---|---|---|
-| `user` event ToolResultEvent extraction | `user` turn events are captured as `RawEvent`. When `--verbose` is active the CLI also emits top-level `tool_result` events (the canonical source). If the CLI does NOT emit top-level `tool_result` events in some configurations, tool results would only appear in `RawEvent.data`. | Low |
-| Copilot backend | `CliProcess('copilot')` is declared but throws on use. Reserved for v2. | Future |
+| `user` event ToolResultEvent extraction | `user` turn events are captured as `RawEvent`. When `--verbose` is active the Claude CLI also emits top-level `tool_result` events (the canonical source). If the CLI does NOT emit top-level `tool_result` events in some configurations, tool results would only appear in `RawEvent.data`. | Low |
