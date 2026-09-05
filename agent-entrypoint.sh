@@ -24,17 +24,17 @@ ln -sf /dev/null "${HOME}/.config/gh/hosts.yml"
 # commands silently fail with "no commits". Detect and clean up corrupt state
 # so the orchestrator can recreate the worktree on retry.
 if [ -e /workspace/.git ]; then
-    if ! git -C /workspace rev-parse HEAD >/dev/null 2>&1; then
+    if ! git -C /workspace rev-parse --verify HEAD >/dev/null 2>&1; then
         echo "ERROR: Git repository at /workspace has no valid HEAD" >&2
         if [ -d /workspace/.git ]; then
             echo "ERROR: .git is a directory (expected a worktree link file) — likely from a failed git init" >&2
             echo "ERROR: Removing corrupt .git directory so the orchestrator can recreate this worktree" >&2
-            rm -rf /workspace/.git
+            rm -rf /workspace/.git 2>/dev/null || echo "ERROR: Could not remove .git directory (permission denied)" >&2
         elif [ -f /workspace/.git ]; then
             GITDIR_REF=$(sed -n 's/^gitdir: *//p' /workspace/.git 2>/dev/null)
             echo "ERROR: .git is a worktree link file but gitdir reference is broken: ${GITDIR_REF:-<unreadable>}" >&2
             echo "ERROR: Removing broken .git link so the orchestrator can recreate this worktree" >&2
-            rm -f /workspace/.git
+            rm -f /workspace/.git 2>/dev/null || echo "ERROR: Could not remove .git link file (permission denied)" >&2
         fi
         echo "ERROR: Git state was corrupt and has been cleaned up. This run will exit; retry to get a fresh worktree." >&2
         exit 1
