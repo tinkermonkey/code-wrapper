@@ -135,7 +135,7 @@ class DoneEvent(BaseModel):
         None, description="Claude's `result.duration_ms` — wall-clock duration of the turn"
     )
     durationApiMs: Optional[float] = Field(
-        None, description="Claude's `result.duration_api_ms` — API-only duration (Cursor CLI only)"
+        None, description="Cursor CLI's `result.duration_api_ms` — API-only duration (Cursor CLI only)"
     )
     totalCostUsd: Optional[float] = Field(None, description="Claude's `result.total_cost_usd`")
     numTurns: Optional[float] = Field(None, description="Claude's `result.num_turns`")

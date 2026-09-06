@@ -355,7 +355,7 @@
         },
         "durationApiMs": {
           "type": "number",
-          "description": "Claude's `result.duration_api_ms` — API-only duration (Cursor CLI only)"
+          "description": "Cursor CLI's `result.duration_api_ms` — API-only duration (Cursor CLI only)"
         },
         "totalCostUsd": {
           "type": "number",

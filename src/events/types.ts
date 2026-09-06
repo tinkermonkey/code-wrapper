@@ -100,7 +100,7 @@ export interface DoneEvent extends BaseEvent {
   isError?: boolean;
   /** Claude's `result.duration_ms` — wall-clock duration of the turn */
   durationMs?: number;
-  /** Claude's `result.duration_api_ms` — API-only duration (Cursor CLI only) */
+  /** Cursor CLI's `result.duration_api_ms` — API-only duration (Cursor CLI only) */
   durationApiMs?: number;
   /** Claude's `result.total_cost_usd` */
   totalCostUsd?: number;
