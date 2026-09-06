@@ -1088,13 +1088,15 @@ describe('createCursorStreamParser', () => {
       expect(evs2[0].text).toBe('Second');
     });
 
-    it('partial events (no model_call_id) are always skipped', () => {
+    it('partial events (no model_call_id) are preserved as RawEvent (zero-loss)', () => {
       const parse = createCursorStreamParser();
-      // Partial form (no model_call_id) is skipped
+      // Partial form (no model_call_id) is preserved as RawEvent
       const evs1 = parse(line({
         type: 'assistant', text: 'Hello', timestamp_ms: 100,
-      }), 0);
-      expect(evs1).toHaveLength(0);
+      }), 0) as [RawEvent];
+      expect(evs1).toHaveLength(1);
+      expect(evs1[0].type).toBe('raw');
+      expect(evs1[0].rawType).toBe('assistant');
 
       // Canonical form (has model_call_id) is emitted
       const evs2 = parse(line({

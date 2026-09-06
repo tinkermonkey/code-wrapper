@@ -48,6 +48,7 @@ interface RawCliEvent {
   usage?: RawUsage;
   result?: string;
   duration_ms?: number;
+  duration_api_ms?: number;
   total_cost_usd?: number;
   num_turns?: number;
 }
@@ -649,8 +650,12 @@ export function createCursorStreamParser(): (line: string, nextSeq: number) => C
       const assistantTimestamp = msg.timestamp_ms as number | null;
       const assistantModelCallId = msg.model_call_id as string | null;
 
-      // Skip partial events (no model_call_id) — they're intermediate updates
+      // Preserve partial events (no model_call_id) as RawEvent rather than silently discarding
       if (!assistantModelCallId) {
+        events.push({
+          seq: seq++, timestamp, type: 'raw',
+          rawType: type, data: msg as unknown,
+        } satisfies RawEvent);
         return events;
       }
 
@@ -705,11 +710,13 @@ export function createCursorStreamParser(): (line: string, nextSeq: number) => C
         } satisfies RawEvent);
       }
 
-    } else if (type === 'result' && msg.subtype === 'success') {
+    } else if (type === 'result' && (msg.subtype === 'success' || msg.subtype === 'error')) {
       events.push({
         seq: seq++, timestamp, type: 'done',
         sessionId: (msg.session_id as string) ?? '',
+        ...(msg.subtype === 'error' && { isError: true }),
         ...(typeof msg.duration_ms === 'number' && { durationMs: msg.duration_ms }),
+        ...(typeof msg.duration_api_ms === 'number' && { durationApiMs: msg.duration_api_ms }),
         ...(typeof msg.result === 'string' && { resultText: msg.result }),
       } satisfies DoneEvent);
 
@@ -761,6 +768,7 @@ function extractCursorToolInfo(msg: Record<string, unknown>) {
 /**
  * Extract output and isError from a Cursor tool_call/completed event.
  * Different tool types have different result structures.
+ * When both output and error fields exist, error takes precedence for the output message.
  */
 function extractCursorToolResult(msg: Record<string, unknown>): { output: string; isError: boolean } {
   const toolTypeMap: Record<string, string> = {
@@ -782,12 +790,14 @@ function extractCursorToolResult(msg: Record<string, unknown>): { output: string
       }
       if (typeof result === 'object' && result !== null) {
         const resultObj = result as Record<string, unknown>;
-        const output = (resultObj.output ?? resultObj.error ?? '') as string;
-        const isError = 'error' in resultObj && !!resultObj.error;
-        return { output, isError };
+        const hasError = 'error' in resultObj && !!resultObj.error;
+        const output = hasError
+          ? (resultObj.error as string)
+          : (resultObj.output as string | undefined) ?? '';
+        return { output, isError: hasError };
       }
     }
   }
 
-  return { output: '', isError: false };
+  return { output: 'Unknown tool type', isError: true };
 }
