@@ -25,32 +25,31 @@ USER root
 # ============================================================================
 # Stage 2: GitHub CLI Auth Entrypoint
 # ============================================================================
-# The base image entrypoint handles SSH setup. This wrapper ensures gh CLI
-# auth is configured from env vars (GH_TOKEN / GITHUB_TOKEN) by writing
-# hosts.yml directly, avoiding D-Bus/keyring dependency in containers.
 COPY agent-entrypoint.sh /usr/local/bin/agent-entrypoint.sh
 RUN chmod +x /usr/local/bin/agent-entrypoint.sh
 
 # ============================================================================
-# Stage 3: Pre-install Dependencies
+# Stage 3: Pre-install Dependencies at /opt/deps
 # ============================================================================
-WORKDIR /workspace
+# Dependencies MUST be baked outside /workspace entirely — the runtime bind
+# mount shadows the entire /workspace subtree.
+WORKDIR /opt/deps
 
-# Copy only the dependency manifest for installation.
-# Source code comes from the runtime mount.
+# Node.js dependencies
 COPY package.json package-lock.json ./
-
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --include=dev
+    npm ci --ignore-scripts --include=dev && \
+    rm -f package.json package-lock.json
 
-# Install Python dev + codegen dependencies for py-code-wrapper.
-# Install from pyproject.toml directly (single source of truth for versions)
-# rather than duplicating pins here, which drift out of sync.
-COPY py-code-wrapper/pyproject.toml py-code-wrapper/setup.py py-code-wrapper/
-RUN mkdir -p py-code-wrapper/src/code_wrapper && \
-    touch py-code-wrapper/src/code_wrapper/__init__.py
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir "./py-code-wrapper[dev,codegen]"
+# Python dependencies for py-code-wrapper (use a venv so it's a single
+# extractable directory)
+COPY py-code-wrapper/pyproject.toml py-code-wrapper/setup.py /tmp/py-code-wrapper/
+RUN mkdir -p /tmp/py-code-wrapper/src/code_wrapper && \
+    touch /tmp/py-code-wrapper/src/code_wrapper/__init__.py
+RUN python3 -m venv /opt/deps/.venv && \
+    /opt/deps/.venv/bin/pip install --upgrade pip && \
+    /opt/deps/.venv/bin/pip install --no-cache-dir "/tmp/py-code-wrapper[dev,codegen]" && \
+    rm -rf /tmp/py-code-wrapper
 
 # ============================================================================
 # Stage 3.5: Install GitHub Copilot CLI
@@ -61,7 +60,7 @@ RUN --mount=type=cache,target=/root/.npm \
 # ============================================================================
 # Stage 4: Ownership and Permissions
 # ============================================================================
-RUN chown -R orchestrator:orchestrator /workspace/node_modules
+RUN chown -R orchestrator:orchestrator /opt/deps
 
 # ============================================================================
 # Stage 5: Switch to Runtime User
@@ -77,8 +76,7 @@ RUN claude --version && \
     copilot --version && \
     node --version && \
     npm --version && \
-    npx tsc --version && \
-    python3 -c "from datamodel_code_generator import generate; print('datamodel-code-generator OK')"
+    /opt/deps/.venv/bin/python3 -c "from datamodel_code_generator import generate; print('datamodel-code-generator OK')"
 
 ENTRYPOINT ["/usr/local/bin/agent-entrypoint.sh"]
 CMD ["/bin/bash"]
