@@ -353,6 +353,10 @@
           "type": "number",
           "description": "Claude's `result.duration_ms` — wall-clock duration of the turn"
         },
+        "durationApiMs": {
+          "type": "number",
+          "description": "Claude's `result.duration_api_ms` — API-only duration (Cursor CLI only)"
+        },
         "totalCostUsd": {
           "type": "number",
           "description": "Claude's `result.total_cost_usd`"
