@@ -794,6 +794,8 @@ function extractCursorToolResult(msg: Record<string, unknown>): { output: string
       if (result !== undefined) {
         return { output: `Unexpected result type: ${typeof result}`, isError: true };
       }
+      // Tool was found but result is undefined — tool completed with no result
+      return { output: '', isError: false };
     }
   }
 

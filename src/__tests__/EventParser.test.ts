@@ -1057,6 +1057,23 @@ describe('createCursorStreamParser', () => {
       expect(evs).toHaveLength(0);
     });
 
+    it('empty text followed by non-empty text with same timestamp/model_call_id → second event emitted', () => {
+      const parse = createCursorStreamParser();
+      // First: empty text event with timestamp and model_call_id
+      const evs1 = parse(line({
+        type: 'assistant', text: '', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 0);
+      expect(evs1).toHaveLength(0);
+
+      // Second: non-empty text with same timestamp and model_call_id should be emitted
+      // (dedup state should not have been claimed by the empty text)
+      const evs2 = parse(line({
+        type: 'assistant', text: 'Hello', timestamp_ms: 100, model_call_id: 'call-1',
+      }), 1) as [TextEvent];
+      expect(evs2).toHaveLength(1);
+      expect(evs2[0]).toMatchObject({ type: 'text', text: 'Hello' });
+    });
+
     it('duplicate canonical event (same timestamp_ms and model_call_id) → skipped', () => {
       const parse = createCursorStreamParser();
       // First: canonical form with model_call_id
@@ -1245,6 +1262,55 @@ describe('createCursorStreamParser', () => {
       expect(ev).toMatchObject({
         type: 'tool_result', toolUseId: 'tc-6',
         output: 'No recognized tool type found', isError: true,
+      });
+    });
+
+    it('known tool with undefined result (e.g., bashToolCall: {}) → ToolResultEvent with empty output', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-7',
+        bashToolCall: {},
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-7',
+        output: '', isError: false,
+      });
+    });
+
+    it('tool with structured error object (non-string error) → ToolResultEvent with JSON stringified error', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-8',
+        bashToolCall: { result: { error: { code: 500, message: 'Server error' } } },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-8',
+        isError: true,
+      });
+      expect(ev.output).toBe(JSON.stringify({ code: 500, message: 'Server error' }));
+    });
+
+    it('tool with non-string/non-object result (number) → ToolResultEvent with "Unexpected result type" error', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-9',
+        bashToolCall: { result: 42 },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-9',
+        output: 'Unexpected result type: number', isError: true,
+      });
+    });
+
+    it('tool with non-string/non-object result (boolean) → ToolResultEvent with "Unexpected result type" error', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-10',
+        readToolCall: { result: true },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-10',
+        output: 'Unexpected result type: boolean', isError: true,
       });
     });
 
