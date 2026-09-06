@@ -645,8 +645,8 @@ export function createCursorStreamParser(): (line: string, nextSeq: number) => C
       // Cursor emits multiple assistant events under --stream-partial-output:
       // - Events with timestamp_ms but no model_call_id are partial/intermediate forms
       // - The canonical form has a model_call_id and represents a complete chunk
-      // Filter out partial events (no model_call_id), keeping only canonical forms.
-      // Deduplicate by tracking (timestamp_ms, model_call_id) pairs.
+      // Partial events (no model_call_id) are preserved as RawEvent for the zero-loss contract.
+      // Deduplicate canonical forms by tracking (timestamp_ms, model_call_id) pairs.
       const assistantTimestamp = msg.timestamp_ms as number | null;
       const assistantModelCallId = msg.model_call_id as string | null;
 

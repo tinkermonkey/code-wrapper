@@ -1224,6 +1224,30 @@ describe('createCursorStreamParser', () => {
       });
     });
 
+    it('tool result with both output and error → error takes precedence', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-5',
+        bashToolCall: { result: { output: 'Success text', error: 'Error text' } },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-5',
+        output: 'Error text', isError: true,
+      });
+    });
+
+    it('unrecognized tool type → ToolResultEvent with error', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-6',
+        unknownToolCall: { result: 'data' },
+      }), 0) as [ToolResultEvent];
+      expect(ev).toMatchObject({
+        type: 'tool_result', toolUseId: 'tc-6',
+        output: 'Unknown tool type', isError: true,
+      });
+    });
+
     it('missing tool_call_id → RawEvent', () => {
       const parse = createCursorStreamParser();
       const [ev] = parse(line({
@@ -1236,7 +1260,7 @@ describe('createCursorStreamParser', () => {
     });
   });
 
-  describe('result/success', () => {
+  describe('result/success and result/error', () => {
     it('result event → DoneEvent with sessionId and durationMs', () => {
       const parse = createCursorStreamParser();
       const [ev] = parse(line({
@@ -1269,6 +1293,30 @@ describe('createCursorStreamParser', () => {
       expect(ev.type).toBe('done');
       expect(ev.durationMs).toBe(3000);
       expect(ev.resultText).toBeUndefined();
+    });
+
+    it('result/success with duration_api_ms → DoneEvent with durationApiMs', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'result', subtype: 'success', session_id: 'chat-666',
+        duration_ms: 5000, duration_api_ms: 3500, result: 'Done',
+      }), 0) as [DoneEvent];
+      expect(ev).toMatchObject({
+        type: 'done', sessionId: 'chat-666',
+        durationMs: 5000, durationApiMs: 3500, resultText: 'Done',
+      });
+    });
+
+    it('result/error event → DoneEvent with isError=true', () => {
+      const parse = createCursorStreamParser();
+      const [ev] = parse(line({
+        type: 'result', subtype: 'error', session_id: 'chat-555',
+        result: 'Some error text',
+      }), 0) as [DoneEvent];
+      expect(ev).toMatchObject({
+        type: 'done', sessionId: 'chat-555',
+        resultText: 'Some error text', isError: true,
+      });
     });
   });
 
