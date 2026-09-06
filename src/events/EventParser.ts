@@ -664,10 +664,10 @@ export function createCursorStreamParser(): (line: string, nextSeq: number) => C
         || lastAssistantModelCallId !== assistantModelCallId;
 
       if (isNew) {
-        lastAssistantTimestamp = assistantTimestamp;
-        lastAssistantModelCallId = assistantModelCallId;
         const text = (msg.text ?? '') as string;
         if (text) {
+          lastAssistantTimestamp = assistantTimestamp;
+          lastAssistantModelCallId = assistantModelCallId;
           events.push({ seq: seq++, timestamp, type: 'text', text } satisfies TextEvent);
         }
       }
@@ -734,26 +734,26 @@ export function createCursorStreamParser(): (line: string, nextSeq: number) => C
   };
 }
 
+const CURSOR_TOOL_TYPE_MAP: Record<string, string> = {
+  readToolCall: 'read',
+  writeToolCall: 'write',
+  bashToolCall: 'bash',
+  searchToolCall: 'search',
+  editToolCall: 'edit',
+  codeSearchToolCall: 'codeSearch',
+  webSearchToolCall: 'webSearch',
+};
+
 /**
  * Extract tool name and input from a Cursor tool_call/started event.
  * Cursor uses polymorphic keys per tool type (readToolCall, writeToolCall, bashToolCall, etc.).
  * Normalize to a single name field.
  */
 function extractCursorToolInfo(msg: Record<string, unknown>) {
-  const toolTypeMap: Record<string, string> = {
-    readToolCall: 'read',
-    writeToolCall: 'write',
-    bashToolCall: 'bash',
-    searchToolCall: 'search',
-    editToolCall: 'edit',
-    codeSearchToolCall: 'codeSearch',
-    webSearchToolCall: 'webSearch',
-  };
-
   let name = 'unknown';
   let input = null;
 
-  for (const [key, toolName] of Object.entries(toolTypeMap)) {
+  for (const [key, toolName] of Object.entries(CURSOR_TOOL_TYPE_MAP)) {
     const toolData = msg[key] as Record<string, unknown> | undefined;
     if (toolData) {
       name = toolName;
@@ -771,17 +771,7 @@ function extractCursorToolInfo(msg: Record<string, unknown>) {
  * When both output and error fields exist, error takes precedence for the output message.
  */
 function extractCursorToolResult(msg: Record<string, unknown>): { output: string; isError: boolean } {
-  const toolTypeMap: Record<string, string> = {
-    readToolCall: 'read',
-    writeToolCall: 'write',
-    bashToolCall: 'bash',
-    searchToolCall: 'search',
-    editToolCall: 'edit',
-    codeSearchToolCall: 'codeSearch',
-    webSearchToolCall: 'webSearch',
-  };
-
-  for (const key of Object.keys(toolTypeMap)) {
+  for (const key of Object.keys(CURSOR_TOOL_TYPE_MAP)) {
     const toolData = msg[key] as Record<string, unknown> | undefined;
     if (toolData) {
       const result = toolData.result;
@@ -791,13 +781,21 @@ function extractCursorToolResult(msg: Record<string, unknown>): { output: string
       if (typeof result === 'object' && result !== null) {
         const resultObj = result as Record<string, unknown>;
         const hasError = 'error' in resultObj && !!resultObj.error;
-        const output = hasError
-          ? (resultObj.error as string)
-          : (resultObj.output as string | undefined) ?? '';
+        let output = '';
+        if (hasError) {
+          const error = resultObj.error;
+          output = typeof error === 'string' ? error : JSON.stringify(error);
+        } else {
+          const outputValue = resultObj.output;
+          output = typeof outputValue === 'string' ? outputValue : (outputValue !== undefined ? JSON.stringify(outputValue) : '');
+        }
         return { output, isError: hasError };
+      }
+      if (result !== undefined) {
+        return { output: `Unexpected result type: ${typeof result}`, isError: true };
       }
     }
   }
 
-  return { output: 'Unknown tool type', isError: true };
+  return { output: 'No recognized tool type found', isError: true };
 }

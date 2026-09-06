@@ -1244,7 +1244,7 @@ describe('createCursorStreamParser', () => {
       }), 0) as [ToolResultEvent];
       expect(ev).toMatchObject({
         type: 'tool_result', toolUseId: 'tc-6',
-        output: 'Unknown tool type', isError: true,
+        output: 'No recognized tool type found', isError: true,
       });
     });
 
