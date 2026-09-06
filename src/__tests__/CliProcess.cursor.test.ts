@@ -276,13 +276,13 @@ describe('timeouts', () => {
 
 // ---------------------------------------------------------------- oversized prompt handling
 describe('oversized prompt handling', () => {
-  it('oversized prompt → ErrorEvent { parse_error } with descriptive detail', async () => {
+  it('oversized prompt → ErrorEvent { cli_error } with descriptive detail', async () => {
     process.env.FAKE_SCENARIO = 'golden-path';
     const oversizedPrompt = 'x'.repeat(33 * 1024); // Exceed 32 KB threshold
     const events = await collect({ prompt: oversizedPrompt });
     const error = events.find(e => e.type === 'error') as ErrorEvent | undefined;
     expect(error).toBeDefined();
-    expect(error?.code).toBe('parse_error');
+    expect(error?.code).toBe('cli_error');
     expect(error?.detail).toContain('exceeds');
     expect(error?.detail).toContain('bytes');
   });

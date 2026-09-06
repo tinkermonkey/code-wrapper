@@ -73,7 +73,8 @@ export class CliProcess {
       // For Cursor, `agent` is a generic binary name. Verify it's a Cursor agent
       // by checking that `agent --version` output identifies Cursor.
       // This guards against collisions with unrelated binaries named `agent`.
-      const r = spawnSync('agent', ['--version'], { stdio: 'pipe', encoding: 'utf-8' });
+      // Add timeout to prevent blocking if an unrelated `agent` binary hangs.
+      const r = spawnSync('agent', ['--version'], { stdio: 'pipe', encoding: 'utf-8', timeout: 5_000 });
       if (r.status !== 0) return false;
       const output = (r.stdout ?? '') + (r.stderr ?? '');
       // Cursor's version output typically includes "Cursor" or "agent" (Cursor branded)
@@ -119,10 +120,11 @@ export class CliProcess {
     // the system's argument limit (~128KB on Linux). Use a conservative threshold.
     if (this.backend === 'cursor') {
       const maxPromptSize = 32 * 1024; // 32 KB conservative threshold
-      if (prompt.length > maxPromptSize) {
+      const promptByteLength = Buffer.byteLength(prompt, 'utf-8');
+      if (promptByteLength > maxPromptSize) {
         yield {
-          seq: 0, timestamp: Date.now(), type: 'error', code: 'parse_error',
-          detail: `Prompt exceeds ${maxPromptSize} bytes (${prompt.length} bytes). Consider breaking the request into smaller parts.`,
+          seq: 0, timestamp: Date.now(), type: 'error', code: 'cli_error',
+          detail: `Prompt exceeds ${maxPromptSize} bytes (${promptByteLength} UTF-8 bytes). Consider breaking the request into smaller parts.`,
         } satisfies ErrorEvent;
         return;
       }
@@ -559,8 +561,15 @@ export class CliProcess {
   /**
    * Build args for the Cursor CLI (`agent`).
    *
-   * Invocation: agent -p <prompt> --output-format stream-json [--workspace cwd] [--resume chatId] [--force] [--agent agent]
-   * The prompt is passed as the -p flag, not via stdin.
+   * Invocation: agent -p <prompt> --output-format stream-json --stream-partial-output [--workspace cwd] [--resume chatId] [--force] [--agent agent]
+   * The prompt is passed as the -p flag, not via stdin. This makes the prompt visible
+   * in process listings (ps aux, /proc/<pid>/cmdline). Unlike Claude and Gemini which
+   * pass prompts via stdin to keep sensitive information out of process listings, Cursor
+   * requires command-line argument delivery. Callers should be aware of this security
+   * difference when handling sensitive prompts (API keys, credentials, PII).
+   *
+   * The --stream-partial-output flag enables incremental streaming of assistant events,
+   * allowing the parser to deduplicate and normalize multiple assistant-event forms.
    *
    * Session resume: --resume <chatId> (when isFirstMessage is false)
    */
@@ -574,7 +583,7 @@ export class CliProcess {
       cwd,
     } = options;
 
-    const args = ['-p', prompt, '--output-format', 'stream-json'];
+    const args = ['-p', prompt, '--output-format', 'stream-json', '--stream-partial-output'];
 
     if (cwd !== undefined && cwd !== process.cwd()) {
       args.push('--workspace', cwd);

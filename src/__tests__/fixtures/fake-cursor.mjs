@@ -29,6 +29,7 @@ const { values: args } = parseArgs({
     'output-format': { type: 'string' },
     'p': { type: 'string' },
     'print': { type: 'string' },
+    'stream-partial-output': { type: 'boolean' },
     'workspace': { type: 'string' },
     'force': { type: 'boolean' },
     'resume': { type: 'string' },
