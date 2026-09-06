@@ -5,3 +5,4 @@ dist/
 *.log
 .mcp.json
 .claude_prompt*
+.venv/
