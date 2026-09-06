@@ -675,13 +675,22 @@ export function createCursorStreamParser(): (line: string, nextSeq: number) => C
     } else if (type === 'tool_call' && msg.subtype === 'started') {
       const toolCallId = msg.tool_call_id as string | undefined;
       if (toolCallId) {
-        const { name, input } = extractCursorToolInfo(msg);
-        events.push({
-          seq: seq++, timestamp, type: 'tool_use',
-          id: toolCallId,
-          name,
-          input: input ?? {},
-        } satisfies ToolUseEvent);
+        const toolInfo = extractCursorToolInfo(msg);
+        if (toolInfo.found) {
+          events.push({
+            seq: seq++, timestamp, type: 'tool_use',
+            id: toolCallId,
+            name: toolInfo.name,
+            input: toolInfo.input,
+          } satisfies ToolUseEvent);
+        } else {
+          // Unknown tool type — preserve full data as raw to maintain zero-loss contract
+          events.push({
+            seq: seq++, timestamp, type: 'raw',
+            rawType: type, rawSubtype: msg.subtype,
+            data: msg as unknown,
+          } satisfies RawEvent);
+        }
       } else {
         // Missing tool_call_id — preserve as raw
         events.push({
@@ -694,13 +703,22 @@ export function createCursorStreamParser(): (line: string, nextSeq: number) => C
     } else if (type === 'tool_call' && msg.subtype === 'completed') {
       const toolCallId = msg.tool_call_id as string | undefined;
       if (toolCallId) {
-        const { output, isError } = extractCursorToolResult(msg);
-        events.push({
-          seq: seq++, timestamp, type: 'tool_result',
-          toolUseId: toolCallId,
-          isError,
-          output,
-        } satisfies ToolResultEvent);
+        const toolResult = extractCursorToolResult(msg);
+        if (toolResult.found) {
+          events.push({
+            seq: seq++, timestamp, type: 'tool_result',
+            toolUseId: toolCallId,
+            isError: toolResult.isError,
+            output: toolResult.output,
+          } satisfies ToolResultEvent);
+        } else {
+          // Unknown tool type — preserve full data as raw to maintain zero-loss contract
+          events.push({
+            seq: seq++, timestamp, type: 'raw',
+            rawType: type, rawSubtype: msg.subtype,
+            data: msg as unknown,
+          } satisfies RawEvent);
+        }
       } else {
         // Missing tool_call_id — preserve as raw
         events.push({
@@ -748,35 +766,32 @@ const CURSOR_TOOL_TYPE_MAP: Record<string, string> = {
  * Extract tool name and input from a Cursor tool_call/started event.
  * Cursor uses polymorphic keys per tool type (readToolCall, writeToolCall, bashToolCall, etc.).
  * Normalize to a single name field.
+ * Returns { found: false } if no recognized tool type is found, maintaining the zero-loss contract.
  */
-function extractCursorToolInfo(msg: Record<string, unknown>) {
-  let name = 'unknown';
-  let input = null;
-
+function extractCursorToolInfo(msg: Record<string, unknown>): { found: true; name: string; input: unknown } | { found: false } {
   for (const [key, toolName] of Object.entries(CURSOR_TOOL_TYPE_MAP)) {
     const toolData = msg[key] as Record<string, unknown> | undefined;
     if (toolData) {
-      name = toolName;
-      input = toolData.input ?? null;
-      break;
+      return { found: true, name: toolName, input: toolData.input ?? {} };
     }
   }
 
-  return { name, input };
+  return { found: false };
 }
 
 /**
  * Extract output and isError from a Cursor tool_call/completed event.
  * Different tool types have different result structures.
  * When both output and error fields exist, error takes precedence for the output message.
+ * Returns { found: false } if no recognized tool type is found, maintaining the zero-loss contract.
  */
-function extractCursorToolResult(msg: Record<string, unknown>): { output: string; isError: boolean } {
+function extractCursorToolResult(msg: Record<string, unknown>): { found: true; output: string; isError: boolean } | { found: false } {
   for (const key of Object.keys(CURSOR_TOOL_TYPE_MAP)) {
     const toolData = msg[key] as Record<string, unknown> | undefined;
     if (toolData) {
       const result = toolData.result;
       if (typeof result === 'string') {
-        return { output: result, isError: false };
+        return { found: true, output: result, isError: false };
       }
       if (typeof result === 'object' && result !== null) {
         const resultObj = result as Record<string, unknown>;
@@ -789,15 +804,15 @@ function extractCursorToolResult(msg: Record<string, unknown>): { output: string
           const outputValue = resultObj.output;
           output = typeof outputValue === 'string' ? outputValue : (outputValue !== undefined ? JSON.stringify(outputValue) : '');
         }
-        return { output, isError: hasError };
+        return { found: true, output, isError: hasError };
       }
       if (result !== undefined) {
-        return { output: `Unexpected result type: ${typeof result}`, isError: true };
+        return { found: true, output: `Unexpected result type: ${typeof result}`, isError: true };
       }
       // Tool was found but result is undefined — tool completed with no result
-      return { output: '', isError: false };
+      return { found: true, output: '', isError: false };
     }
   }
 
-  return { output: 'No recognized tool type found', isError: true };
+  return { found: false };
 }

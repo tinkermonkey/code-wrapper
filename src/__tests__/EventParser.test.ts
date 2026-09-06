@@ -1180,14 +1180,18 @@ describe('createCursorStreamParser', () => {
       expect(ev.rawSubtype).toBe('started');
     });
 
-    it('unknown tool type → ToolUseEvent with name "unknown"', () => {
+    it('unknown tool type → RawEvent (zero-loss contract)', () => {
       const parse = createCursorStreamParser();
       const [ev] = parse(line({
         type: 'tool_call', subtype: 'started', tool_call_id: 'tc-4',
         futureToolCall: { input: { data: 'test' } },
-      }), 0) as [ToolUseEvent];
+      }), 0) as [RawEvent];
       expect(ev).toMatchObject({
-        type: 'tool_use', id: 'tc-4', name: 'unknown',
+        type: 'raw', rawType: 'tool_call', rawSubtype: 'started',
+      });
+      expect(ev.data).toMatchObject({
+        type: 'tool_call', subtype: 'started', tool_call_id: 'tc-4',
+        futureToolCall: { input: { data: 'test' } },
       });
     });
   });
@@ -1253,15 +1257,18 @@ describe('createCursorStreamParser', () => {
       });
     });
 
-    it('unrecognized tool type → ToolResultEvent with error', () => {
+    it('unrecognized tool type → RawEvent (zero-loss contract)', () => {
       const parse = createCursorStreamParser();
       const [ev] = parse(line({
         type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-6',
         unknownToolCall: { result: 'data' },
-      }), 0) as [ToolResultEvent];
+      }), 0) as [RawEvent];
       expect(ev).toMatchObject({
-        type: 'tool_result', toolUseId: 'tc-6',
-        output: 'No recognized tool type found', isError: true,
+        type: 'raw', rawType: 'tool_call', rawSubtype: 'completed',
+      });
+      expect(ev.data).toMatchObject({
+        type: 'tool_call', subtype: 'completed', tool_call_id: 'tc-6',
+        unknownToolCall: { result: 'data' },
       });
     });
 
