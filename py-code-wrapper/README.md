@@ -92,7 +92,7 @@ All events inherit from `BaseEvent` with fields:
 Specific event types:
 
 - `TextEvent`: Text content from the assistant
-- `ThinkingEvent`: Extended thinking content
+- `ThinkingEvent`: Extended thinking content (not produced for `cursor` backend)
 - `ToolUseEvent`: Tool use request (id, name, input)
 - `ToolResultEvent`: Tool execution result (toolUseId, isError, output)
 - `ProgressEvent`: Periodic heartbeat (elapsed seconds)
@@ -101,6 +101,17 @@ Specific event types:
 - `DoneEvent`: Conversation completion (sessionId, usage)
 - `ErrorEvent`: Error condition (code, detail, exitCode)
 - `RawEvent`: Unknown event type fallback (rawType, rawSubtype, data)
+
+### Backend-Specific Behavior
+
+The `backend` option in `ClientOptions` accepts any lowercase string (matching `^[a-z]+$`) and forwards it directly to the wrapped binary:
+
+- `"claude"` → invokes `claude` binary
+- `"copilot"` → invokes `copilot` binary
+- `"gemini"` → invokes `gemini` binary
+- `"cursor"` → invokes `agent` binary (Cursor CLI)
+
+**Note:** The `cursor` backend runs in headless print mode and does not emit `ThinkingEvent`. All model reasoning is included in the final `TextEvent` output.
 
 ## Configuration
 
@@ -180,7 +191,7 @@ options = ClientOptions(
     skip_permissions=False,                # bypass permission checks
     agent="my-agent",                      # use a specific agent
     mcp_config_path="/path/to/config.json",  # MCP configuration (Claude only)
-    backend="claude",                      # "claude", "copilot", or "gemini"
+    backend="claude",                      # "claude", "copilot", "gemini", or "cursor"
 )
 ```
 

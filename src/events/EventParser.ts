@@ -48,6 +48,7 @@ interface RawCliEvent {
   usage?: RawUsage;
   result?: string;
   duration_ms?: number;
+  duration_api_ms?: number;
   total_cost_usd?: number;
   num_turns?: number;
 }
@@ -581,4 +582,237 @@ export function createCopilotAcpParser(): (line: string, nextSeq: number) => Cla
     } satisfies RawEvent);
     return events;
   };
+}
+
+/**
+ * Stateful stream parser factory for the Cursor CLI (`agent --output-format stream-json`).
+ *
+ * Returns a closure that parses Cursor's NDJSON stream into normalized ClaudeEvents.
+ * Call once per CliProcess.run() invocation so all lines in a session share the same
+ * deduplication state.
+ *
+ * Cursor event → ClaudeEvent mapping:
+ *   system/init                                      → ReadyEvent with sessionId, model
+ *   assistant (with deduplication of partial output) → TextEvent
+ *   tool_call/started (with polymorphic tool keys)   → ToolUseEvent
+ *   tool_call/completed (with polymorphic tool keys) → ToolResultEvent
+ *   result/success                                   → DoneEvent with sessionId, durationMs
+ *   All other event types                            → RawEvent (zero-loss fallback)
+ *   Malformed JSON (line starts with '{')            → ErrorEvent { code: 'parse_error' }
+ *   Plaintext lines                                  → TextEvent
+ *
+ * Note: Cursor headless mode does not emit thinking content, so no ThinkingEvent is produced.
+ */
+export function createCursorStreamParser(): (line: string, nextSeq: number) => ClaudeEvent[] {
+  // Track the last assistant event's timestamp_ms and model_call_id to deduplicate
+  // partial output events. Cursor emits multiple forms of assistant events; we keep
+  // only the canonical one (the one with model_call_id).
+  let lastAssistantTimestamp: number | null = null;
+  let lastAssistantModelCallId: string | null = null;
+
+  return function parseLine(line: string, nextSeq: number): ClaudeEvent[] {
+    if (!line.trim()) return [];
+    const timestamp = Date.now();
+    let seq = nextSeq;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let msg: any;
+
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      if (line.trimStart().startsWith('{')) {
+        return [{
+          seq, timestamp, type: 'error', code: 'parse_error',
+          detail: `Malformed JSON: ${line.slice(0, 200)}`,
+        } satisfies ErrorEvent];
+      }
+      return [{ seq, timestamp, type: 'text', text: line + '\n' } satisfies TextEvent];
+    }
+
+    const events: ClaudeEvent[] = [];
+    const type = msg.type as string | undefined;
+
+    if (type === 'system' && msg.subtype === 'init') {
+      lastAssistantTimestamp = null;
+      lastAssistantModelCallId = null;
+      events.push({
+        seq: seq++, timestamp, type: 'ready',
+        sessionId: (msg.session_id as string) ?? '',
+        ...(typeof msg.model === 'string' && { model: msg.model }),
+      } satisfies ReadyEvent);
+
+    } else if (type === 'assistant') {
+      // Cursor emits multiple assistant events under --stream-partial-output:
+      // - Events with timestamp_ms but no model_call_id are partial/intermediate forms
+      // - The canonical form has a model_call_id and represents a complete chunk
+      // Partial events (no model_call_id) are preserved as RawEvent for the zero-loss contract.
+      // Deduplicate canonical forms by tracking (timestamp_ms, model_call_id) pairs.
+      const assistantTimestamp = msg.timestamp_ms as number | null;
+      const assistantModelCallId = msg.model_call_id as string | null;
+
+      // Preserve partial events (no model_call_id) as RawEvent rather than silently discarding
+      if (!assistantModelCallId) {
+        events.push({
+          seq: seq++, timestamp, type: 'raw',
+          rawType: type, data: msg as unknown,
+        } satisfies RawEvent);
+        return events;
+      }
+
+      // Emit canonical events (with model_call_id) only if new
+      const isNew = lastAssistantTimestamp !== assistantTimestamp
+        || lastAssistantModelCallId !== assistantModelCallId;
+
+      if (isNew) {
+        const text = (msg.text ?? '') as string;
+        if (text) {
+          lastAssistantTimestamp = assistantTimestamp;
+          lastAssistantModelCallId = assistantModelCallId;
+          events.push({ seq: seq++, timestamp, type: 'text', text } satisfies TextEvent);
+        }
+      }
+
+    } else if (type === 'tool_call' && msg.subtype === 'started') {
+      const toolCallId = msg.tool_call_id as string | undefined;
+      if (toolCallId) {
+        const toolInfo = extractCursorToolInfo(msg);
+        if (toolInfo.found) {
+          events.push({
+            seq: seq++, timestamp, type: 'tool_use',
+            id: toolCallId,
+            name: toolInfo.name,
+            input: toolInfo.input,
+          } satisfies ToolUseEvent);
+        } else {
+          // Unknown tool type — preserve full data as raw to maintain zero-loss contract
+          events.push({
+            seq: seq++, timestamp, type: 'raw',
+            rawType: type, rawSubtype: msg.subtype,
+            data: msg as unknown,
+          } satisfies RawEvent);
+        }
+      } else {
+        // Missing tool_call_id — preserve as raw
+        events.push({
+          seq: seq++, timestamp, type: 'raw',
+          rawType: type, rawSubtype: msg.subtype,
+          data: msg as unknown,
+        } satisfies RawEvent);
+      }
+
+    } else if (type === 'tool_call' && msg.subtype === 'completed') {
+      const toolCallId = msg.tool_call_id as string | undefined;
+      if (toolCallId) {
+        const toolResult = extractCursorToolResult(msg);
+        if (toolResult.found) {
+          events.push({
+            seq: seq++, timestamp, type: 'tool_result',
+            toolUseId: toolCallId,
+            isError: toolResult.isError,
+            output: toolResult.output,
+          } satisfies ToolResultEvent);
+        } else {
+          // Unknown tool type — preserve full data as raw to maintain zero-loss contract
+          events.push({
+            seq: seq++, timestamp, type: 'raw',
+            rawType: type, rawSubtype: msg.subtype,
+            data: msg as unknown,
+          } satisfies RawEvent);
+        }
+      } else {
+        // Missing tool_call_id — preserve as raw
+        events.push({
+          seq: seq++, timestamp, type: 'raw',
+          rawType: type, rawSubtype: msg.subtype,
+          data: msg as unknown,
+        } satisfies RawEvent);
+      }
+
+    } else if (type === 'result' && (msg.subtype === 'success' || msg.subtype === 'error')) {
+      events.push({
+        seq: seq++, timestamp, type: 'done',
+        sessionId: (msg.session_id as string) ?? '',
+        ...(msg.subtype === 'error' && { isError: true }),
+        ...(typeof msg.duration_ms === 'number' && { durationMs: msg.duration_ms }),
+        ...(typeof msg.duration_api_ms === 'number' && { durationApiMs: msg.duration_api_ms }),
+        ...(typeof msg.result === 'string' && { resultText: msg.result }),
+      } satisfies DoneEvent);
+
+    } else {
+      // Generic fallback: no events are ever silently lost
+      events.push({
+        seq: seq++, timestamp, type: 'raw',
+        rawType: type ?? 'unknown',
+        ...(msg.subtype !== undefined && { rawSubtype: msg.subtype }),
+        data: msg as unknown,
+      } satisfies RawEvent);
+    }
+
+    return events;
+  };
+}
+
+const CURSOR_TOOL_TYPE_MAP: Record<string, string> = {
+  readToolCall: 'read',
+  writeToolCall: 'write',
+  bashToolCall: 'bash',
+  searchToolCall: 'search',
+  editToolCall: 'edit',
+  codeSearchToolCall: 'codeSearch',
+  webSearchToolCall: 'webSearch',
+};
+
+/**
+ * Extract tool name and input from a Cursor tool_call/started event.
+ * Cursor uses polymorphic keys per tool type (readToolCall, writeToolCall, bashToolCall, etc.).
+ * Normalize to a single name field.
+ * Returns { found: false } if no recognized tool type is found, maintaining the zero-loss contract.
+ */
+function extractCursorToolInfo(msg: Record<string, unknown>): { found: true; name: string; input: unknown } | { found: false } {
+  for (const [key, toolName] of Object.entries(CURSOR_TOOL_TYPE_MAP)) {
+    const toolData = msg[key] as Record<string, unknown> | undefined;
+    if (toolData) {
+      return { found: true, name: toolName, input: toolData.input ?? {} };
+    }
+  }
+
+  return { found: false };
+}
+
+/**
+ * Extract output and isError from a Cursor tool_call/completed event.
+ * Different tool types have different result structures.
+ * When both output and error fields exist, error takes precedence for the output message.
+ * Returns { found: false } if no recognized tool type is found, maintaining the zero-loss contract.
+ */
+function extractCursorToolResult(msg: Record<string, unknown>): { found: true; output: string; isError: boolean } | { found: false } {
+  for (const key of Object.keys(CURSOR_TOOL_TYPE_MAP)) {
+    const toolData = msg[key] as Record<string, unknown> | undefined;
+    if (toolData) {
+      const result = toolData.result;
+      if (typeof result === 'string') {
+        return { found: true, output: result, isError: false };
+      }
+      if (typeof result === 'object' && result !== null) {
+        const resultObj = result as Record<string, unknown>;
+        const hasError = 'error' in resultObj && !!resultObj.error;
+        let output = '';
+        if (hasError) {
+          const error = resultObj.error;
+          output = typeof error === 'string' ? error : JSON.stringify(error);
+        } else {
+          const outputValue = resultObj.output;
+          output = typeof outputValue === 'string' ? outputValue : (outputValue !== undefined ? JSON.stringify(outputValue) : '');
+        }
+        return { found: true, output, isError: hasError };
+      }
+      if (result !== undefined) {
+        return { found: true, output: `Unexpected result type: ${typeof result}`, isError: true };
+      }
+      // Tool was found but result is undefined — tool completed with no result
+      return { found: true, output: '', isError: false };
+    }
+  }
+
+  return { found: false };
 }

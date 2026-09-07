@@ -164,6 +164,11 @@ class TestClientOptions:
         opts = ClientOptions(cwd="/test", prompt="hello", backend="claude")
         assert opts.backend == "claude"
 
+    def test_cursor_backend_accepted(self):
+        """Cursor backend should be accepted and stored."""
+        opts = ClientOptions(cwd="/test", prompt="hello", backend="cursor")
+        assert opts.backend == "cursor"
+
     def test_inspect_mode_allows_empty_prompt(self):
         """Empty prompt should be allowed when inspect mode is enabled."""
         opts = ClientOptions(cwd="/test", prompt="", inspect="sess-123")
@@ -423,6 +428,32 @@ class TestBinaryOptions:
                 assert "--inspect" in args
                 idx = args.index("--inspect")
                 assert args[idx + 1] == "sess-abc-123"
+
+    @pytest.mark.asyncio
+    async def test_backend_option_forwarded_unchanged(self, client, basic_options):
+        """Backend option should be forwarded to binary unchanged."""
+        # Test all standard backends
+        for backend in ["claude", "copilot", "gemini", "cursor"]:
+            basic_options.backend = backend
+
+            with patch("code_wrapper.client.resolve_binary") as mock_resolve:
+                mock_binary = MagicMock()
+                mock_resolve.return_value = mock_binary
+
+                with patch("code_wrapper.client.asyncio.create_subprocess_exec") as mock_subprocess:
+                    mock_process = create_mock_process()
+                    mock_process.stdout.readline = AsyncMock(return_value=b"")
+
+                    mock_subprocess.return_value = mock_process
+
+                    async for _ in client.run(basic_options):
+                        pass
+
+                    # Verify the backend was passed through
+                    call_args = mock_subprocess.call_args
+                    args = call_args[0]
+                    backend_idx = args.index("--backend")
+                    assert args[backend_idx + 1] == backend
 
 
 class TestInspectMode:
